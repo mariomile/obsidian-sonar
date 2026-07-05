@@ -1,0 +1,201 @@
+/*
+ * Sonar — search modal styling.
+ * Native Obsidian variables for theme-fit + a few plugin-prefixed --sonar-*
+ * tokens, matching the marioverse plugin suite (masonry/horizon) conventions:
+ * quiet focus on inputs, 80ms hover transitions, 28px transparent icon buttons.
+ */
+
+.sonar-modal {
+  --sonar-radius: var(--radius-m);
+  --sonar-row-radius: var(--radius-s);
+  --sonar-gap: var(--size-4-2);
+  --sonar-ease: 80ms ease;
+  width: 640px;
+  max-width: 92vw;
+}
+
+/* Lift the modal toward the top, Spotlight-style. */
+.modal-container:has(.sonar-modal) {
+  align-items: flex-start;
+}
+.sonar-modal {
+  margin-top: 12vh;
+}
+
+.sonar-modal__content {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 70vh;
+}
+
+/* ---- input row ---- */
+.sonar-input-row {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-3) var(--size-4-4);
+  border-bottom: var(--border-width) solid var(--background-modifier-border);
+}
+.sonar-input-row__icon {
+  display: flex;
+  color: var(--text-muted);
+}
+.sonar-input-row__icon svg,
+.sonar-input-row__clear svg {
+  width: 18px;
+  height: 18px;
+}
+.sonar-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  box-shadow: none;
+  font-size: var(--font-ui-medium);
+  color: var(--text-normal);
+  padding: 0;
+}
+/* Quiet focus: no accent ring on the search field. */
+.sonar-input:focus {
+  box-shadow: none;
+  outline: none;
+}
+.sonar-input-row__clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--sonar-row-radius);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color var(--sonar-ease), color var(--sonar-ease);
+}
+.sonar-input-row__clear:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+/* ---- results ---- */
+.sonar-results {
+  overflow-y: auto;
+  padding: var(--size-4-1) var(--size-4-2);
+  flex: 1;
+}
+.sonar-result {
+  display: flex;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-2);
+  border-radius: var(--sonar-row-radius);
+  cursor: pointer;
+  transition: background-color var(--sonar-ease);
+}
+.sonar-result:hover {
+  background-color: var(--background-modifier-hover);
+}
+.sonar-result.is-selected {
+  background-color: var(--background-modifier-hover);
+}
+.sonar-result.is-selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: 3px;
+  height: 1.4em;
+  margin-top: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--interactive-accent);
+}
+.sonar-result {
+  position: relative;
+}
+
+.sonar-result__icon {
+  display: flex;
+  color: var(--text-faint);
+  padding-top: 2px;
+}
+.sonar-result__icon svg {
+  width: 16px;
+  height: 16px;
+}
+.sonar-result__main {
+  min-width: 0;
+  flex: 1;
+}
+.sonar-result__titlerow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-4-2);
+  justify-content: space-between;
+}
+.sonar-result__title {
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sonar-result__score {
+  flex: none;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.sonar-result__path {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sonar-result__excerpt {
+  margin-top: 2px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.sonar-mark {
+  background: transparent;
+  color: var(--text-accent);
+  font-weight: var(--font-semibold);
+  padding: 0;
+}
+.sonar-result--create .sonar-result__main {
+  color: var(--text-muted);
+  align-self: center;
+}
+
+/* ---- footer ---- */
+.sonar-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-4);
+  border-top: var(--border-width) solid var(--background-modifier-border);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+.sonar-footer__status {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- settings ---- */
+.sonar-http-status {
+  margin: var(--size-4-2) 0 var(--size-4-4);
+  font-size: var(--font-ui-smaller);
+}
+.sonar-http-status.is-ok {
+  color: var(--text-success);
+}
+.sonar-http-status.is-error {
+  color: var(--text-error);
+}

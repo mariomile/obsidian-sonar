@@ -1,0 +1,9 @@
+{
+  "id": "sonar",
+  "name": "Sonar",
+  "version": "0.1.0",
+  "minAppVersion": "1.12.7",
+  "description": "A fast, relevance-first search engine for your vault — better ranking, instant results, drop-in HTTP API.",
+  "author": "Mario Miletta",
+  "isDesktopOnly": false
+}
