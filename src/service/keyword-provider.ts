@@ -26,6 +26,7 @@ export class KeywordProvider implements SearchProvider {
       titleOnly: opts.titleOnly,
       pathFilters: opts.pathFilters,
       tagFilters: opts.tagFilters,
+      minMtime: opts.minMtime,
     });
     return hits.map((h) => ({
       path: h.path,

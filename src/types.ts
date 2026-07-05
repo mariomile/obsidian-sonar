@@ -46,6 +46,8 @@ export interface ProviderSearchOptions {
   pathFilters?: string[];
   /** Folded tag prefixes a result must carry (tag chip). */
   tagFilters?: string[];
+  /** Only include docs modified at or after this epoch ms (date chip). */
+  minMtime?: number;
 }
 
 /** A group of results from one provider, for section rendering. */

@@ -31,6 +31,8 @@ export interface SearchOptions {
   pathFilters?: string[];
   /** Extra folded tag prefixes a result must carry (tag chip). */
   tagFilters?: string[];
+  /** Only include docs modified at or after this epoch ms (date chip). */
+  minMtime?: number;
 }
 
 const DEFAULT_LIMIT = 20;
@@ -74,7 +76,7 @@ export function search(index: InvertedIndex, raw: string, opts: SearchOptions): 
   // Merge query operators with chip filters.
   const pathFilters = [...parsed.pathFilters, ...(opts.pathFilters ?? [])];
   const tagFilters = [...parsed.tagFilters, ...(opts.tagFilters ?? [])];
-  const allow = buildAllow(index, parsed.exclusions, pathFilters, tagFilters);
+  const allow = buildAllow(index, parsed.exclusions, pathFilters, tagFilters, opts.minMtime);
   const restrictFields = opts.titleOnly ? TITLE_FIELDS : undefined;
 
   let scored = rank({
@@ -131,8 +133,14 @@ function buildAllow(
   exclusions: string[],
   pathFilters: string[],
   tagFilters: string[],
+  minMtime?: number,
 ): ((docId: number) => boolean) | undefined {
-  if (exclusions.length === 0 && pathFilters.length === 0 && tagFilters.length === 0) {
+  if (
+    exclusions.length === 0 &&
+    pathFilters.length === 0 &&
+    tagFilters.length === 0 &&
+    minMtime === undefined
+  ) {
     return undefined;
   }
 
@@ -159,6 +167,7 @@ function buildAllow(
     if (excluded.has(docId)) return false;
     const d = index.docEntry(docId);
     if (!d) return false;
+    if (minMtime !== undefined && d.mtime < minMtime) return false;
     if (pathFilters.length > 0) {
       const foldedPath = fold(d.path);
       if (!pathFilters.every((pf) => foldedPath.includes(pf))) return false;

@@ -14,6 +14,7 @@ export interface RegistryQueryOptions {
   titleOnly?: boolean;
   pathFilters?: string[];
   tagFilters?: string[];
+  minMtime?: number;
   /** Delay before `deep` providers fire, so typing doesn't spam them. */
   deepDelayMs?: number;
 }
@@ -51,6 +52,7 @@ export class ProviderRegistry {
                 titleOnly: opts.titleOnly,
                 pathFilters: opts.pathFilters,
                 tagFilters: opts.tagFilters,
+                minMtime: opts.minMtime,
               }),
             };
           } catch {

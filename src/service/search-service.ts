@@ -26,10 +26,11 @@ export interface QueryOptions {
   titleOnly?: boolean;
   pathFilters?: string[];
   tagFilters?: string[];
+  minMtime?: number;
 }
 
-const PREVIEW_CHARS = 1200;
-
+/** Max markdown chars fed to the preview renderer (avoids rendering huge notes). */
+const PREVIEW_CHARS = 4000;
 const DEBOUNCE_MS = 400;
 const SAVE_DEBOUNCE_MS = 10_000;
 const SLICE_MS = 12;
@@ -261,6 +262,7 @@ export class SearchService {
       titleOnly: opts.titleOnly,
       pathFilters: opts.pathFilters,
       tagFilters: opts.tagFilters,
+      minMtime: opts.minMtime,
     });
     const hits: KeywordHit[] = [];
     for (const r of results) {
@@ -271,12 +273,17 @@ export class SearchService {
   }
 
   /** Most recently modified live docs (for the empty-query browse view). */
-  recent(limit: number, filters?: { pathFilters?: string[]; tagFilters?: string[] }): SearchResult[] {
+  recent(
+    limit: number,
+    filters?: { pathFilters?: string[]; tagFilters?: string[]; minMtime?: number },
+  ): SearchResult[] {
     const paths = filters?.pathFilters ?? [];
     const tags = filters?.tagFilters ?? [];
+    const minMtime = filters?.minMtime;
     return this.index
       .liveEntries()
       .filter(({ entry }) => {
+        if (minMtime !== undefined && entry.mtime < minMtime) return false;
         if (paths.length > 0) {
           const foldedPath = entry.path.toLowerCase();
           if (!paths.every((p) => foldedPath.includes(p))) return false;
@@ -307,13 +314,17 @@ export class SearchService {
     return [...set].sort();
   }
 
-  /** First ~1200 chars of a note's prose (frontmatter stripped) for the preview pane. */
-  async previewText(path: string): Promise<string | undefined> {
+  /**
+   * Raw markdown for the preview pane (frontmatter stripped, capped), so the
+   * modal can render it formatted. Non-markdown docs return their extracted
+   * text (rendered as a plain paragraph).
+   */
+  async previewMarkdown(path: string): Promise<string | undefined> {
     const file = this.app.vault.getAbstractFileByPath(path);
     if (!(file instanceof TFile)) return undefined;
     if (file.extension === 'md') {
       try {
-        return stripFrontmatter(await this.app.vault.cachedRead(file)).slice(0, PREVIEW_CHARS);
+        return stripFrontmatter(await this.app.vault.cachedRead(file)).trimStart().slice(0, PREVIEW_CHARS);
       } catch {
         return undefined;
       }

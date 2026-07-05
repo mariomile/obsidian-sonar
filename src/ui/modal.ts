@@ -1,4 +1,15 @@
-import { type App, Modal, Notice, Platform, TFile, TFolder, setIcon } from 'obsidian';
+import {
+  type App,
+  Component,
+  MarkdownRenderer,
+  Menu,
+  Modal,
+  Notice,
+  Platform,
+  TFile,
+  TFolder,
+  setIcon,
+} from 'obsidian';
 import type { DocType } from '../index/fields.ts';
 import { groupByRecency } from '../index/time-buckets.ts';
 import type { SonarSettings } from '../settings.ts';
@@ -20,7 +31,6 @@ interface RowItem {
   docType: DocType;
   matched: string[];
   excerpt?: { text: string; ranges: Array<[number, number]> };
-  /** Present for the synthetic "create note" row. */
   create?: boolean;
 }
 
@@ -29,13 +39,19 @@ interface RowGroup {
   items: RowItem[];
 }
 
+interface DateFilter {
+  label: string;
+  minMtime: number;
+}
+
 const BROWSE_LIMIT = 60;
+const DAY = 86_400_000;
 
 /**
  * The central search modal — a two-pane, Notion-style quick-find. Empty query
- * shows recent notes grouped by recency (Today/Yesterday/…); typing switches to
- * a flat relevance-ranked list. The right pane previews the selected note.
- * Filter chips (Title only / In folder / Tag) refine both modes.
+ * shows recent notes grouped by recency; typing switches to a flat relevance
+ * list. The right pane renders a formatted markdown preview of the selected
+ * note. Filter chips (Title only / In / Tag / Date) refine both modes.
  */
 export class SonarModal extends Modal {
   private inputEl!: HTMLInputElement;
@@ -52,11 +68,13 @@ export class SonarModal extends Modal {
   private titleOnly = false;
   private folderFilter: string | null = null;
   private tagFilter: string | null = null;
+  private dateFilter: DateFilter | null = null;
 
   private cancelQuery: (() => void) | null = null;
   private queryStart = 0;
   private previewGen = 0;
-  private readonly previewCache = new Map<string, string>();
+  private renderedPath: string | null = null;
+  private readonly previewComponent = new Component();
 
   constructor(
     app: App,
@@ -66,36 +84,40 @@ export class SonarModal extends Modal {
   }
 
   onOpen(): void {
+    this.previewComponent.load();
     this.modalEl.addClass('sonar-modal');
     this.contentEl.addClass('sonar-modal__content');
-    // Single-column, full-screen layout on phones / narrow windows.
     if (Platform.isPhone || window.innerWidth <= 600) this.modalEl.addClass('is-narrow');
 
-    // Input row.
+    // Input row: search icon · input · single smart × (clear when typed, else close).
     const inputRow = this.contentEl.createDiv({ cls: 'sonar-input-row' });
     setIcon(inputRow.createDiv({ cls: 'sonar-input-row__icon' }), 'search');
     this.inputEl = inputRow.createEl('input', {
       cls: 'sonar-input',
       attr: { type: 'text', placeholder: 'Search or ask a question in Marioverse…', spellcheck: 'false' },
     });
-    const clearBtn = inputRow.createEl('button', { cls: 'sonar-icon-btn', attr: { 'aria-label': 'Clear' } });
-    setIcon(clearBtn, 'x');
-    clearBtn.addEventListener('click', () => {
-      this.inputEl.value = '';
-      this.inputEl.focus();
-      this.onInput('');
+    const dismiss = inputRow.createEl('button', {
+      cls: 'sonar-icon-btn sonar-dismiss',
+      attr: { 'aria-label': 'Clear or close' },
+    });
+    setIcon(dismiss, 'x');
+    dismiss.addEventListener('click', () => {
+      if (this.inputEl.value) {
+        this.inputEl.value = '';
+        this.inputEl.focus();
+        this.onInput('');
+      } else {
+        this.close();
+      }
     });
 
-    // Filter chips.
     this.chipsEl = this.contentEl.createDiv({ cls: 'sonar-chips' });
     this.renderChips();
 
-    // Body: results (left) + preview (right).
     const body = this.contentEl.createDiv({ cls: 'sonar-body' });
     this.listEl = body.createDiv({ cls: 'sonar-results' });
     this.previewEl = body.createDiv({ cls: 'sonar-preview' });
 
-    // Footer.
     const footer = this.contentEl.createDiv({ cls: 'sonar-footer' });
     footer.createSpan({
       cls: 'sonar-footer__hints',
@@ -111,6 +133,7 @@ export class SonarModal extends Modal {
 
   onClose(): void {
     this.cancelQuery?.();
+    this.previewComponent.unload();
     this.contentEl.empty();
   }
 
@@ -125,7 +148,7 @@ export class SonarModal extends Modal {
     });
     this.makeChip(
       'folder',
-      this.folderFilter ? `In: ${this.folderFilter}` : 'In',
+      this.folderFilter ? `In: ${this.folderShort(this.folderFilter)}` : 'In',
       this.folderFilter !== null,
       () => this.pickFolder(),
       this.folderFilter !== null ? () => this.setFolder(null) : undefined,
@@ -137,20 +160,27 @@ export class SonarModal extends Modal {
       () => this.pickTag(),
       this.tagFilter !== null ? () => this.setTag(null) : undefined,
     );
+    this.makeChip(
+      'calendar',
+      this.dateFilter ? this.dateFilter.label : 'Date',
+      this.dateFilter !== null,
+      (e) => this.pickDate(e),
+      this.dateFilter !== null ? () => this.setDate(null) : undefined,
+    );
   }
 
   private makeChip(
     icon: string,
     label: string,
     active: boolean,
-    onClick: () => void,
+    onClick: (e: MouseEvent) => void,
     onClear?: () => void,
   ): void {
     const chip = this.chipsEl.createEl('button', { cls: 'sonar-chip' });
     chip.toggleClass('is-active', active);
     setIcon(chip.createSpan({ cls: 'sonar-chip__icon' }), icon);
     chip.createSpan({ cls: 'sonar-chip__label', text: label });
-    chip.addEventListener('click', onClick);
+    chip.addEventListener('click', (e) => onClick(e));
     if (onClear) {
       const x = chip.createSpan({ cls: 'sonar-chip__clear' });
       setIcon(x, 'x');
@@ -159,6 +189,10 @@ export class SonarModal extends Modal {
         onClear();
       });
     }
+  }
+
+  private folderShort(path: string): string {
+    return path.length > 22 ? '…' + path.slice(-21) : path;
   }
 
   private pickFolder(): void {
@@ -176,6 +210,30 @@ export class SonarModal extends Modal {
     ).open();
   }
 
+  private pickDate(e: MouseEvent): void {
+    const now = this.deps.now();
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    const presets: DateFilter[] = [
+      { label: 'Today', minMtime: start.getTime() },
+      { label: 'Past 7 days', minMtime: now - 7 * DAY },
+      { label: 'Past 30 days', minMtime: now - 30 * DAY },
+      { label: 'Past year', minMtime: now - 365 * DAY },
+    ];
+    const menu = new Menu();
+    for (const preset of presets) {
+      menu.addItem((item) =>
+        item
+          .setTitle(preset.label)
+          .setChecked(this.dateFilter?.label === preset.label)
+          .onClick(() => this.setDate(preset)),
+      );
+    }
+    menu.addSeparator();
+    menu.addItem((item) => item.setTitle('Any time').onClick(() => this.setDate(null)));
+    menu.showAtMouseEvent(e);
+  }
+
   private setFolder(value: string | null): void {
     this.folderFilter = value;
     this.renderChips();
@@ -185,6 +243,13 @@ export class SonarModal extends Modal {
 
   private setTag(value: string | null): void {
     this.tagFilter = value;
+    this.renderChips();
+    this.refresh();
+    this.inputEl.focus();
+  }
+
+  private setDate(value: DateFilter | null): void {
+    this.dateFilter = value;
     this.renderChips();
     this.refresh();
     this.inputEl.focus();
@@ -222,6 +287,7 @@ export class SonarModal extends Modal {
         titleOnly: this.titleOnly,
         pathFilters: this.pathFilters,
         tagFilters: this.tagFilters,
+        minMtime: this.dateFilter?.minMtime,
       },
       (update) => {
         const items: RowItem[] = update.fused.map((r) => ({
@@ -244,6 +310,7 @@ export class SonarModal extends Modal {
     const recent = this.deps.service.recent(BROWSE_LIMIT, {
       pathFilters: this.pathFilters,
       tagFilters: this.tagFilters,
+      minMtime: this.dateFilter?.minMtime,
     });
     const prevPath = this.rows[this.selected]?.path;
     this.groups = groupByRecency(recent, (r) => r.mtime, this.deps.now()).map((g) => ({
@@ -300,35 +367,41 @@ export class SonarModal extends Modal {
 
   private renderPreview(): void {
     const item = this.rows[this.selected];
-    this.previewEl.empty();
     if (!item || item.create) {
+      this.previewEl.empty();
       this.previewEl.addClass('is-empty');
+      this.renderedPath = null;
       return;
     }
+    if (item.path === this.renderedPath) return; // already showing this note
+    this.renderedPath = item.path;
     this.previewEl.removeClass('is-empty');
+    this.previewEl.empty();
 
     const header = this.previewEl.createDiv({ cls: 'sonar-preview__header' });
-    header.createDiv({ cls: 'sonar-preview__title', text: item.basename });
-    const open = header.createEl('button', { cls: 'sonar-icon-btn', attr: { 'aria-label': 'Open' } });
-    setIcon(open, 'arrow-up-right');
+    const heading = header.createDiv({ cls: 'sonar-preview__heading' });
+    heading.createDiv({ cls: 'sonar-preview__title', text: item.basename });
+    const dir = item.path.includes('/') ? item.path.slice(0, item.path.lastIndexOf('/')) : '';
+    if (dir) heading.createDiv({ cls: 'sonar-preview__path', text: dir });
+
+    const open = header.createEl('button', {
+      cls: 'sonar-icon-btn',
+      attr: { 'aria-label': 'Open note' },
+    });
+    setIcon(open, 'external-link');
     open.addEventListener('click', () => this.openPath(item.path, false));
 
-    const dir = item.path.includes('/') ? item.path.slice(0, item.path.lastIndexOf('/')) : '';
-    if (dir) this.previewEl.createDiv({ cls: 'sonar-preview__path', text: dir });
-
-    const bodyEl = this.previewEl.createDiv({ cls: 'sonar-preview__body' });
-    const cached = this.previewCache.get(item.path);
-    if (cached !== undefined) {
-      bodyEl.setText(cached);
-    } else {
-      bodyEl.setText('');
-      const gen = ++this.previewGen;
-      void this.deps.service.previewText(item.path).then((text) => {
-        const clean = (text ?? '').replace(/\s+/g, ' ').trim();
-        this.previewCache.set(item.path, clean);
-        if (gen === this.previewGen) bodyEl.setText(clean);
-      });
-    }
+    const bodyEl = this.previewEl.createDiv({ cls: 'sonar-preview__body markdown-rendered' });
+    const gen = ++this.previewGen;
+    void this.deps.service.previewMarkdown(item.path).then((md) => {
+      if (gen !== this.previewGen) return;
+      bodyEl.empty();
+      if (!md) {
+        bodyEl.createEl('em', { cls: 'sonar-preview__empty', text: 'No preview available.' });
+        return;
+      }
+      void MarkdownRenderer.render(this.app, md, bodyEl, item.path, this.previewComponent);
+    });
   }
 
   private scrollSelectedIntoView(): void {

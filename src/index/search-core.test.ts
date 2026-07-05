@@ -118,6 +118,15 @@ describe('search — title only & chip filters', () => {
     expect(titleOnly).toEqual(['Report Q1.md']); // body-only match excluded
   });
 
+  it('applies a minMtime date filter', () => {
+    const index = buildIndex([
+      { path: 'old.md', content: 'report', mtime: NOW - 100 * 86_400_000 },
+      { path: 'new.md', content: 'report', mtime: NOW - 1 * 86_400_000 },
+    ]);
+    const r = search(index, 'report ', { now: NOW, minMtime: NOW - 7 * 86_400_000 });
+    expect(r.map((x) => x.path)).toEqual(['new.md']);
+  });
+
   it('applies chip path/tag filters passed via options', () => {
     const index = buildIndex([
       { path: 'Atlas/a.md', content: 'report', meta: { frontmatter: { tags: ['work'] } } },
