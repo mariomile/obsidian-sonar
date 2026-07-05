@@ -79,6 +79,12 @@
   width: 19px;
   height: 19px;
 }
+.sonar-input-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
 .sonar-input {
   flex: 1;
   border: none;
@@ -88,6 +94,7 @@
   font-size: var(--font-ui-large);
   color: var(--text-normal);
   padding: 0;
+  padding-right: 24px; /* room for the inline clear button */
 }
 .sonar-input:focus {
   box-shadow: none;
@@ -95,6 +102,41 @@
 }
 .sonar-input::placeholder {
   color: var(--text-faint);
+}
+
+/* Inline clear (×) — only visible while there's a query. */
+.sonar-input-clear {
+  position: absolute;
+  right: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  cursor: pointer;
+  box-shadow: none;
+  transition: background-color var(--sonar-ease), color var(--sonar-ease);
+}
+.sonar-input-clear.is-visible {
+  display: flex;
+}
+.sonar-input-clear:hover {
+  background: var(--background-modifier-border-hover);
+  color: var(--text-normal);
+}
+.sonar-input-clear svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Dedicated close button, top-right of the header. */
+.sonar-close {
+  color: var(--text-muted);
 }
 
 /* ---- filter chips ---- */

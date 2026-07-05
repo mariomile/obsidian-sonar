@@ -55,6 +55,7 @@ const DAY = 86_400_000;
  */
 export class SonarModal extends Modal {
   private inputEl!: HTMLInputElement;
+  private clearBtn!: HTMLButtonElement;
   private chipsEl!: HTMLElement;
   private listEl!: HTMLElement;
   private previewEl!: HTMLElement;
@@ -89,27 +90,32 @@ export class SonarModal extends Modal {
     this.contentEl.addClass('sonar-modal__content');
     if (Platform.isPhone || window.innerWidth <= 600) this.modalEl.addClass('is-narrow');
 
-    // Input row: search icon · input · single smart × (clear when typed, else close).
+    // Input row: search icon · [input + inline clear] · dedicated close ×.
     const inputRow = this.contentEl.createDiv({ cls: 'sonar-input-row' });
     setIcon(inputRow.createDiv({ cls: 'sonar-input-row__icon' }), 'search');
-    this.inputEl = inputRow.createEl('input', {
+
+    const inputWrap = inputRow.createDiv({ cls: 'sonar-input-wrap' });
+    this.inputEl = inputWrap.createEl('input', {
       cls: 'sonar-input',
       attr: { type: 'text', placeholder: 'Search or ask a question in Marioverse…', spellcheck: 'false' },
     });
-    const dismiss = inputRow.createEl('button', {
-      cls: 'sonar-icon-btn sonar-dismiss',
-      attr: { 'aria-label': 'Clear or close' },
+    this.clearBtn = inputWrap.createEl('button', {
+      cls: 'sonar-input-clear',
+      attr: { 'aria-label': 'Clear search' },
     });
-    setIcon(dismiss, 'x');
-    dismiss.addEventListener('click', () => {
-      if (this.inputEl.value) {
-        this.inputEl.value = '';
-        this.inputEl.focus();
-        this.onInput('');
-      } else {
-        this.close();
-      }
+    setIcon(this.clearBtn, 'x');
+    this.clearBtn.addEventListener('click', () => {
+      this.inputEl.value = '';
+      this.inputEl.focus();
+      this.onInput('');
     });
+
+    const closeBtn = inputRow.createEl('button', {
+      cls: 'sonar-icon-btn sonar-close',
+      attr: { 'aria-label': 'Close' },
+    });
+    setIcon(closeBtn, 'x');
+    closeBtn.addEventListener('click', () => this.close());
 
     this.chipsEl = this.contentEl.createDiv({ cls: 'sonar-chips' });
     this.renderChips();
@@ -267,6 +273,7 @@ export class SonarModal extends Modal {
 
   private onInput(value: string): void {
     this.raw = value;
+    this.clearBtn.toggleClass('is-visible', value.length > 0);
     this.refresh();
   }
 
