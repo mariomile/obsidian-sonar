@@ -1,4 +1,4 @@
-import { type App, Modal, Notice, TFile, TFolder, setIcon } from 'obsidian';
+import { type App, Modal, Notice, Platform, TFile, TFolder, setIcon } from 'obsidian';
 import type { DocType } from '../index/fields.ts';
 import { groupByRecency } from '../index/time-buckets.ts';
 import type { SonarSettings } from '../settings.ts';
@@ -68,6 +68,8 @@ export class SonarModal extends Modal {
   onOpen(): void {
     this.modalEl.addClass('sonar-modal');
     this.contentEl.addClass('sonar-modal__content');
+    // Single-column, full-screen layout on phones / narrow windows.
+    if (Platform.isPhone || window.innerWidth <= 600) this.modalEl.addClass('is-narrow');
 
     // Input row.
     const inputRow = this.contentEl.createDiv({ cls: 'sonar-input-row' });

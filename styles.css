@@ -296,6 +296,63 @@
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * ---- phone layout ----
+ * The two-pane view is desktop/tablet-first; on a phone there isn't room for a
+ * side preview, so collapse to a single full-screen column of results (tap a
+ * row to open it). Gated on Obsidian's own `.is-phone` body class (tablets keep
+ * the two-pane view); the width media query is a safety net for narrow windows.
+ */
+.is-phone .sonar-modal,
+.sonar-modal.is-narrow {
+  width: 100vw;
+  max-width: 100vw;
+  margin-top: 0;
+  border-radius: 0;
+}
+.is-phone .sonar-modal__content,
+.sonar-modal.is-narrow .sonar-modal__content {
+  height: 100%;
+  max-height: none;
+}
+.is-phone .sonar-preview,
+.sonar-modal.is-narrow .sonar-preview {
+  display: none;
+}
+.is-phone .sonar-results,
+.sonar-modal.is-narrow .sonar-results {
+  flex: 1 1 100%;
+}
+.is-phone .sonar-footer__hints,
+.sonar-modal.is-narrow .sonar-footer__hints {
+  display: none;
+}
+.is-phone .sonar-input,
+.sonar-modal.is-narrow .sonar-input {
+  /* ≥16px avoids iOS auto-zoom on focus. */
+  font-size: max(16px, var(--font-ui-medium));
+}
+.is-phone .sonar-chips,
+.sonar-modal.is-narrow .sonar-chips {
+  flex-wrap: wrap;
+}
+.is-phone .sonar-result,
+.sonar-modal.is-narrow .sonar-result {
+  padding: var(--size-4-3) var(--size-4-2);
+}
+
+@media (max-width: 600px) {
+  .sonar-preview {
+    display: none;
+  }
+  .sonar-results {
+    flex: 1 1 100%;
+  }
+  .sonar-footer__hints {
+    display: none;
+  }
+}
+
 /* ---- settings ---- */
 .sonar-http-status {
   margin: var(--size-4-2) 0 var(--size-4-4);
