@@ -146,6 +146,16 @@ export class InvertedIndex {
     return [...this.pathToId.keys()];
   }
 
+  /** Live document entries (with their docId), for browse/recency views. */
+  liveEntries(): Array<{ docId: number; entry: DocEntry }> {
+    const out: Array<{ docId: number; entry: DocEntry }> = [];
+    for (const docId of this.pathToId.values()) {
+      const entry = this.docs[docId];
+      if (entry && !entry.deleted) out.push({ docId, entry });
+    }
+    return out;
+  }
+
   getPostings(term: string): TermEntry | undefined {
     return this.terms.get(term);
   }

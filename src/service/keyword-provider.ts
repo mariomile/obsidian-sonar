@@ -23,6 +23,9 @@ export class KeywordProvider implements SearchProvider {
       limit: opts.limit,
       now: opts.now,
       signal: opts.signal,
+      titleOnly: opts.titleOnly,
+      pathFilters: opts.pathFilters,
+      tagFilters: opts.tagFilters,
     });
     return hits.map((h) => ({
       path: h.path,

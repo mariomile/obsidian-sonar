@@ -47,6 +47,8 @@ export interface RankInput {
   limit: number;
   /** Optional filter predicate (path/tag filters, exclusions). */
   allow?: (docId: number) => boolean;
+  /** When set, only these fields contribute (e.g. title-only search). */
+  restrictFields?: Set<number>;
 }
 
 export interface ScoredDoc {
@@ -120,7 +122,7 @@ function phraseAdjacent(posLists: number[][]): boolean {
  * rescoring pass over the top candidates.
  */
 export function rank(input: RankInput): ScoredDoc[] {
-  const { index, groups, phrases, now, limit, allow } = input;
+  const { index, groups, phrases, now, limit, allow, restrictFields } = input;
   const n = index.docCount;
   if (n === 0) return [];
 
@@ -150,7 +152,9 @@ export function rank(input: RankInput): ScoredDoc[] {
         for (let f = 0; f < FIELD_COUNT; f++) {
           if (fieldMask & (1 << f)) {
             const tf = p[i++]!;
-            if (entryDoc) {
+            // Always advance the cursor past every field's tf, but only score
+            // the fields allowed by restrictFields (title-only search).
+            if (entryDoc && (!restrictFields || restrictFields.has(f))) {
               const b = RANK.fieldB[f]!;
               const avg = avgLen[f]!;
               const norm = avg > 0 ? entryDoc.fieldLengths[f]! / avg : 1;
@@ -169,6 +173,7 @@ export function rank(input: RankInput): ScoredDoc[] {
 
         if (!entryDoc || entryDoc.deleted) continue;
         if (allow && !allow(docId)) continue;
+        if (tnorm === 0) continue; // matched only in restricted-out fields
 
         const contribution = (termIdf * tnorm) / (RANK.k1 + tnorm);
         const cur = groupBest.get(docId);

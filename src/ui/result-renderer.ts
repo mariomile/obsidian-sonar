@@ -1,6 +1,17 @@
 import { setIcon } from 'obsidian';
 import { tokenize } from '../index/tokenizer.ts';
-import type { HighlightRange, ProviderResult } from '../types.ts';
+import type { DocType } from '../index/fields.ts';
+import type { Excerpt, HighlightRange } from '../types.ts';
+
+/** The minimal shape a row needs to render — browse items lack score/excerpt. */
+export interface RenderableResult {
+  path: string;
+  basename: string;
+  docType: DocType;
+  matched: string[];
+  score?: number;
+  excerpt?: Excerpt;
+}
 
 const ICONS: Record<string, string> = {
   md: 'file-text',
@@ -44,7 +55,7 @@ export interface RowOptions {
 /** Render one search result row and return its element. */
 export function renderResultRow(
   container: HTMLElement,
-  result: ProviderResult,
+  result: RenderableResult,
   opts: RowOptions,
 ): HTMLElement {
   const row = container.createDiv({ cls: 'sonar-result' });
@@ -58,7 +69,7 @@ export function renderResultRow(
   const titleRow = main.createDiv({ cls: 'sonar-result__titlerow' });
   const title = titleRow.createDiv({ cls: 'sonar-result__title' });
   renderHighlighted(title, result.basename, basenameRanges(result.basename, result.matched));
-  if (opts.showScore) {
+  if (opts.showScore && result.score !== undefined) {
     titleRow.createSpan({ cls: 'sonar-result__score', text: result.score.toFixed(2) });
   }
 

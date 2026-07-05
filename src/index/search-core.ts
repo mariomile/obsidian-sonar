@@ -2,8 +2,12 @@ import { fold } from './tokenizer.ts';
 import { parseQuery } from './query.ts';
 import { fuzzyCandidates } from './fuzzy.ts';
 import { rank, RANK, type TermGroup } from './bm25f.ts';
+import { FIELD } from './fields.ts';
 import type { InvertedIndex } from './inverted-index.ts';
 import type { DocType } from './fields.ts';
+
+/** Fields searched when "Title only" is on. */
+const TITLE_FIELDS = new Set<number>([FIELD.BASENAME, FIELD.ALIASES, FIELD.H1, FIELD.H2H3]);
 
 export interface SearchResult {
   docId: number;
@@ -21,6 +25,12 @@ export interface SearchOptions {
   limit?: number;
   /** Epoch ms for the recency decay. */
   now: number;
+  /** Restrict matching to title fields (basename/aliases/headings). */
+  titleOnly?: boolean;
+  /** Extra folded path substrings a result must contain (folder chip). */
+  pathFilters?: string[];
+  /** Extra folded tag prefixes a result must carry (tag chip). */
+  tagFilters?: string[];
 }
 
 const DEFAULT_LIMIT = 20;
@@ -61,9 +71,21 @@ export function search(index: InvertedIndex, raw: string, opts: SearchOptions): 
     if (expansions.length > 0) groups.push({ variants: expansions, weight: RANK.prefixWeight });
   }
 
-  const allow = buildAllow(index, parsed.exclusions, parsed.pathFilters, parsed.tagFilters);
+  // Merge query operators with chip filters.
+  const pathFilters = [...parsed.pathFilters, ...(opts.pathFilters ?? [])];
+  const tagFilters = [...parsed.tagFilters, ...(opts.tagFilters ?? [])];
+  const allow = buildAllow(index, parsed.exclusions, pathFilters, tagFilters);
+  const restrictFields = opts.titleOnly ? TITLE_FIELDS : undefined;
 
-  let scored = rank({ index, groups, phrases: parsed.phrases, now: opts.now, limit, allow });
+  let scored = rank({
+    index,
+    groups,
+    phrases: parsed.phrases,
+    now: opts.now,
+    limit,
+    allow,
+    restrictFields,
+  });
 
   // Fuzzy fallback: only when strong matching is sparse.
   if (scored.length < FUZZY_MIN) {
@@ -76,7 +98,15 @@ export function search(index: InvertedIndex, raw: string, opts: SearchOptions): 
       if (cands.length > 0) fuzzyGroups.push({ variants: cands, weight: RANK.fuzzyWeight });
     }
     if (fuzzyGroups.length > groups.length) {
-      scored = rank({ index, groups: fuzzyGroups, phrases: parsed.phrases, now: opts.now, limit, allow });
+      scored = rank({
+        index,
+        groups: fuzzyGroups,
+        phrases: parsed.phrases,
+        now: opts.now,
+        limit,
+        allow,
+        restrictFields,
+      });
     }
   }
 

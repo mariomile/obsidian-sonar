@@ -23,7 +23,12 @@ export interface QueryOptions {
   limit: number;
   now: number;
   signal?: AbortSignal;
+  titleOnly?: boolean;
+  pathFilters?: string[];
+  tagFilters?: string[];
 }
+
+const PREVIEW_CHARS = 1200;
 
 const DEBOUNCE_MS = 400;
 const SAVE_DEBOUNCE_MS = 10_000;
@@ -250,13 +255,70 @@ export class SearchService {
 
   /** Run a search and attach an excerpt to each hit (reads live file text). */
   async query(raw: string, opts: QueryOptions): Promise<KeywordHit[]> {
-    const results = search(this.index, raw, { limit: opts.limit, now: opts.now });
+    const results = search(this.index, raw, {
+      limit: opts.limit,
+      now: opts.now,
+      titleOnly: opts.titleOnly,
+      pathFilters: opts.pathFilters,
+      tagFilters: opts.tagFilters,
+    });
     const hits: KeywordHit[] = [];
     for (const r of results) {
       if (opts.signal?.aborted) break;
       hits.push({ ...r, excerpt: await this.buildExcerpt(r) });
     }
     return hits;
+  }
+
+  /** Most recently modified live docs (for the empty-query browse view). */
+  recent(limit: number, filters?: { pathFilters?: string[]; tagFilters?: string[] }): SearchResult[] {
+    const paths = filters?.pathFilters ?? [];
+    const tags = filters?.tagFilters ?? [];
+    return this.index
+      .liveEntries()
+      .filter(({ entry }) => {
+        if (paths.length > 0) {
+          const foldedPath = entry.path.toLowerCase();
+          if (!paths.every((p) => foldedPath.includes(p))) return false;
+        }
+        if (tags.length > 0) {
+          if (!tags.every((t) => entry.tags.some((tag) => tag.startsWith(t)))) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => b.entry.mtime - a.entry.mtime)
+      .slice(0, limit)
+      .map(({ docId, entry }) => ({
+        docId,
+        path: entry.path,
+        basename: entry.basename,
+        docType: entry.docType,
+        tags: entry.tags,
+        mtime: entry.mtime,
+        score: 0,
+        matched: [],
+      }));
+  }
+
+  /** Sorted list of every tag in the index (for the tag filter chip). */
+  allTags(): string[] {
+    const set = new Set<string>();
+    for (const { entry } of this.index.liveEntries()) for (const t of entry.tags) set.add(t);
+    return [...set].sort();
+  }
+
+  /** First ~1200 chars of a note's prose (frontmatter stripped) for the preview pane. */
+  async previewText(path: string): Promise<string | undefined> {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) return undefined;
+    if (file.extension === 'md') {
+      try {
+        return stripFrontmatter(await this.app.vault.cachedRead(file)).slice(0, PREVIEW_CHARS);
+      } catch {
+        return undefined;
+      }
+    }
+    return this.extractor?.cachedText(path)?.slice(0, PREVIEW_CHARS);
   }
 
   private async buildExcerpt(r: SearchResult): Promise<Excerpt | undefined> {

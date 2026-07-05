@@ -1,17 +1,20 @@
 /*
- * Sonar — search modal styling.
- * Native Obsidian variables for theme-fit + a few plugin-prefixed --sonar-*
- * tokens, matching the marioverse plugin suite (masonry/horizon) conventions:
- * quiet focus on inputs, 80ms hover transitions, 28px transparent icon buttons.
+ * Sonar — Notion-style two-pane quick-find.
+ * Native Obsidian variables for theme-fit + plugin-prefixed --sonar-* tokens,
+ * matching the marioverse suite conventions (quiet input focus, 80ms hover
+ * transitions, 28px transparent icon buttons).
  */
 
 .sonar-modal {
-  --sonar-radius: var(--radius-m);
-  --sonar-row-radius: var(--radius-s);
-  --sonar-gap: var(--size-4-2);
+  --sonar-radius: var(--radius-l, 12px);
+  --sonar-row-radius: var(--radius-m, 8px);
   --sonar-ease: 80ms ease;
-  width: 640px;
-  max-width: 92vw;
+  --sonar-mark: hsla(var(--interactive-accent-hsl, 220 70% 60%), 1);
+  width: 880px;
+  max-width: 94vw;
+  padding: 0;
+  border-radius: var(--sonar-radius);
+  overflow: hidden;
 }
 
 /* Lift the modal toward the top, Spotlight-style. */
@@ -19,14 +22,40 @@
   align-items: flex-start;
 }
 .sonar-modal {
-  margin-top: 12vh;
+  margin-top: 9vh;
 }
 
 .sonar-modal__content {
   padding: 0;
   display: flex;
   flex-direction: column;
-  max-height: 70vh;
+  height: 66vh;
+  max-height: 720px;
+}
+
+/* ---- icon buttons (shared) ---- */
+.sonar-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  box-shadow: none;
+  transition: background-color var(--sonar-ease), color var(--sonar-ease);
+}
+.sonar-icon-btn:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.sonar-icon-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* ---- input row ---- */
@@ -35,16 +64,14 @@
   align-items: center;
   gap: var(--size-4-2);
   padding: var(--size-4-3) var(--size-4-4);
-  border-bottom: var(--border-width) solid var(--background-modifier-border);
 }
 .sonar-input-row__icon {
   display: flex;
   color: var(--text-muted);
 }
-.sonar-input-row__icon svg,
-.sonar-input-row__clear svg {
-  width: 18px;
-  height: 18px;
+.sonar-input-row__icon svg {
+  width: 19px;
+  height: 19px;
 }
 .sonar-input {
   flex: 1;
@@ -52,44 +79,113 @@
   background: transparent;
   outline: none;
   box-shadow: none;
-  font-size: var(--font-ui-medium);
+  font-size: var(--font-ui-large);
   color: var(--text-normal);
   padding: 0;
 }
-/* Quiet focus: no accent ring on the search field. */
 .sonar-input:focus {
   box-shadow: none;
   outline: none;
 }
-.sonar-input-row__clear {
+.sonar-input::placeholder {
+  color: var(--text-faint);
+}
+
+/* ---- filter chips ---- */
+.sonar-chips {
   display: flex;
+  gap: var(--size-4-2);
+  padding: 0 var(--size-4-4) var(--size-4-2);
   align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: var(--sonar-row-radius);
+}
+.sonar-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border: var(--border-width) solid transparent;
+  border-radius: 7px;
   background: transparent;
   color: var(--text-muted);
+  font-size: var(--font-ui-small);
   cursor: pointer;
+  box-shadow: none;
   transition: background-color var(--sonar-ease), color var(--sonar-ease);
 }
-.sonar-input-row__clear:hover {
+.sonar-chip:hover {
   background-color: var(--background-modifier-hover);
   color: var(--text-normal);
 }
-
-/* ---- results ---- */
-.sonar-results {
-  overflow-y: auto;
-  padding: var(--size-4-1) var(--size-4-2);
-  flex: 1;
+.sonar-chip.is-active {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+  border-color: var(--background-modifier-border);
 }
+.sonar-chip__icon {
+  display: flex;
+  opacity: 0.85;
+}
+.sonar-chip__icon svg {
+  width: 14px;
+  height: 14px;
+}
+.sonar-chip__clear {
+  display: flex;
+  margin-left: 2px;
+  opacity: 0.6;
+}
+.sonar-chip__clear svg {
+  width: 12px;
+  height: 12px;
+}
+.sonar-chip__clear:hover {
+  opacity: 1;
+}
+
+/* ---- body: results + preview ---- */
+.sonar-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  border-top: var(--border-width) solid var(--background-modifier-border);
+}
+.sonar-results {
+  flex: 1 1 56%;
+  overflow-y: auto;
+  padding: var(--size-4-2) var(--size-4-3);
+}
+.sonar-preview {
+  flex: 1 1 44%;
+  overflow-y: auto;
+  padding: var(--size-4-4);
+  margin: var(--size-4-3);
+  border: var(--border-width) solid var(--background-modifier-border);
+  border-radius: var(--sonar-row-radius);
+  background: var(--background-secondary);
+}
+.sonar-preview.is-empty {
+  background: transparent;
+  border-color: transparent;
+}
+
+/* ---- group headers ---- */
+.sonar-group {
+  padding: var(--size-4-3) var(--size-4-2) var(--size-4-1);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  color: var(--text-faint);
+}
+.sonar-group:first-child {
+  padding-top: var(--size-4-1);
+}
+
+/* ---- result rows ---- */
 .sonar-result {
+  position: relative;
   display: flex;
   gap: var(--size-4-2);
-  padding: var(--size-4-2) var(--size-4-2);
+  padding: var(--size-4-2);
   border-radius: var(--sonar-row-radius);
   cursor: pointer;
   transition: background-color var(--sonar-ease);
@@ -98,26 +194,12 @@
   background-color: var(--background-modifier-hover);
 }
 .sonar-result.is-selected {
-  background-color: var(--background-modifier-hover);
+  background-color: var(--background-modifier-active-hover, var(--background-modifier-hover));
 }
-.sonar-result.is-selected::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  width: 3px;
-  height: 1.4em;
-  margin-top: 2px;
-  border-radius: 0 2px 2px 0;
-  background: var(--interactive-accent);
-}
-.sonar-result {
-  position: relative;
-}
-
 .sonar-result__icon {
   display: flex;
   color: var(--text-faint);
-  padding-top: 2px;
+  padding-top: 1px;
 }
 .sonar-result__icon svg {
   width: 16px;
@@ -134,7 +216,6 @@
   justify-content: space-between;
 }
 .sonar-result__title {
-  font-weight: var(--font-semibold);
   color: var(--text-normal);
   white-space: nowrap;
   overflow: hidden;
@@ -171,6 +252,33 @@
 .sonar-result--create .sonar-result__main {
   color: var(--text-muted);
   align-self: center;
+}
+
+/* ---- preview pane ---- */
+.sonar-preview__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--size-4-2);
+}
+.sonar-preview__title {
+  font-size: var(--font-ui-large);
+  font-weight: var(--font-bold);
+  color: var(--text-normal);
+  line-height: 1.25;
+}
+.sonar-preview__path {
+  margin-top: var(--size-4-1);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+.sonar-preview__body {
+  margin-top: var(--size-4-3);
+  font-size: var(--font-ui-small);
+  line-height: 1.55;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* ---- footer ---- */

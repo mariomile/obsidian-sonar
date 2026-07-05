@@ -11,6 +11,9 @@ export interface RegistryUpdate {
 export interface RegistryQueryOptions {
   limit: number;
   now: number;
+  titleOnly?: boolean;
+  pathFilters?: string[];
+  tagFilters?: string[];
   /** Delay before `deep` providers fire, so typing doesn't spam them. */
   deepDelayMs?: number;
 }
@@ -39,7 +42,17 @@ export class ProviderRegistry {
       const settled = await Promise.all(
         wave.map(async (p) => {
           try {
-            return { p, results: await p.search(raw, { limit: opts.limit, now: opts.now, signal }) };
+            return {
+              p,
+              results: await p.search(raw, {
+                limit: opts.limit,
+                now: opts.now,
+                signal,
+                titleOnly: opts.titleOnly,
+                pathFilters: opts.pathFilters,
+                tagFilters: opts.tagFilters,
+              }),
+            };
           } catch {
             return { p, results: [] as ProviderResult[] };
           }

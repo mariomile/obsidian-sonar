@@ -40,6 +40,12 @@ export interface ProviderSearchOptions {
   limit: number;
   now: number;
   signal: AbortSignal;
+  /** Restrict to title fields (keyword provider only). */
+  titleOnly?: boolean;
+  /** Folded path substrings a result must contain (folder chip). */
+  pathFilters?: string[];
+  /** Folded tag prefixes a result must carry (tag chip). */
+  tagFilters?: string[];
 }
 
 /** A group of results from one provider, for section rendering. */

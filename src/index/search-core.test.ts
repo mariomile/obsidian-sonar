@@ -107,6 +107,28 @@ describe('search — operators', () => {
   });
 });
 
+describe('search — title only & chip filters', () => {
+  it('titleOnly ignores body matches, keeps title matches', () => {
+    const index = buildIndex([
+      { path: 'Report Q1.md', content: 'unrelated prose' },
+      { path: 'other.md', content: 'this mentions report several times: report report' },
+    ]);
+    expect(paths(index, 'report ')).toContain('other.md'); // body match counts normally
+    const titleOnly = search(index, 'report ', { now: NOW, titleOnly: true }).map((r) => r.path);
+    expect(titleOnly).toEqual(['Report Q1.md']); // body-only match excluded
+  });
+
+  it('applies chip path/tag filters passed via options', () => {
+    const index = buildIndex([
+      { path: 'Atlas/a.md', content: 'report', meta: { frontmatter: { tags: ['work'] } } },
+      { path: 'Atlas/b.md', content: 'report' },
+      { path: 'Journal/c.md', content: 'report', meta: { frontmatter: { tags: ['work'] } } },
+    ]);
+    const r = search(index, 'report ', { now: NOW, pathFilters: ['atlas'], tagFilters: ['work'] });
+    expect(r.map((x) => x.path)).toEqual(['Atlas/a.md']);
+  });
+});
+
 describe('search — empty & filter-only', () => {
   it('returns nothing for a blank query', () => {
     const index = buildIndex([{ path: 'a.md', content: 'x' }]);
