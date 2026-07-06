@@ -92,9 +92,14 @@
   display: flex;
   align-items: center;
 }
-.sonar-input {
+/* Scoped under `.sonar-modal` on purpose: Obsidian core styles bare
+ * `input[type="text"]` (specificity 0,1,1) with a form-field border, background
+ * and radius that outrank a lone `.sonar-input` (0,1,0). Nesting under the modal
+ * (0,2,0) wins, so the search field reads as flat text — no boxed input. */
+.sonar-modal .sonar-input {
   flex: 1;
   border: none;
+  border-radius: 0;
   background: transparent;
   outline: none;
   box-shadow: none;
@@ -103,7 +108,7 @@
   padding: 0;
   padding-right: 24px; /* room for the inline clear button */
 }
-.sonar-input:focus {
+.sonar-modal .sonar-input:focus {
   box-shadow: none;
   outline: none;
 }
@@ -203,7 +208,6 @@
   display: flex;
   flex: 1;
   min-height: 0;
-  border-top: var(--border-width) solid var(--background-modifier-border);
 }
 .sonar-results {
   flex: 1 1 56%;
@@ -304,9 +308,14 @@
   font-weight: var(--font-semibold);
   padding: 0;
 }
-.sonar-result--create .sonar-result__main {
+.sonar-result--create .sonar-result__main,
+.sonar-result--exo .sonar-result__main {
   color: var(--text-muted);
   align-self: center;
+}
+/* Exo hand-off row: accent the icon so it reads as the AI action. */
+.sonar-result--exo .sonar-result__icon {
+  color: var(--text-accent);
 }
 
 /* ---- preview pane ---- */

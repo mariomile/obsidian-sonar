@@ -32,6 +32,12 @@ interface RowItem {
   matched: string[];
   excerpt?: { text: string; ranges: Array<[number, number]> };
   create?: boolean;
+  exo?: boolean;
+}
+
+/** Minimal shape of the Exo plugin's public cross-plugin API. */
+interface ExoApi {
+  askExo(query: string, autoSend?: boolean): Promise<void>;
 }
 
 interface RowGroup {
@@ -97,7 +103,7 @@ export class SonarModal extends Modal {
     const inputWrap = inputRow.createDiv({ cls: 'sonar-input-wrap' });
     this.inputEl = inputWrap.createEl('input', {
       cls: 'sonar-input',
-      attr: { type: 'text', placeholder: 'Search or ask a question in Marioverse…', spellcheck: 'false' },
+      attr: { type: 'text', placeholder: 'Search your vault…', spellcheck: 'false' },
     });
     this.clearBtn = inputWrap.createEl('button', {
       cls: 'sonar-input-clear',
@@ -309,7 +315,13 @@ export class SonarModal extends Modal {
           excerpt: r.excerpt,
         }));
         if (items.length < 3) {
-          items.push({ path: '', basename: this.raw.trim(), docType: 'md', matched: [], create: true });
+          const q = this.raw.trim();
+          items.push({ path: '', basename: q, docType: 'md', matched: [], create: true });
+          // When Exo is installed, offer to hand the query off to a fresh
+          // default-model chat instead of the (few) local matches.
+          if (this.exoPlugin()) {
+            items.push({ path: '', basename: q, docType: 'md', matched: [], exo: true });
+          }
         }
         this.groups = [{ items }];
         this.commitRows(prevPath);
@@ -362,6 +374,14 @@ export class SonarModal extends Modal {
           row.addEventListener('click', () => this.activate(i, false));
           continue;
         }
+        if (item.exo) {
+          const row = holder.createDiv({ cls: 'sonar-result sonar-result--exo' });
+          if (i === this.selected) row.addClass('is-selected');
+          setIcon(row.createDiv({ cls: 'sonar-result__icon' }), 'sparkles');
+          row.createDiv({ cls: 'sonar-result__main', text: `Search with Exo: “${item.basename}”` });
+          row.addEventListener('click', () => this.activate(i, false));
+          continue;
+        }
         renderResultRow(holder, item, {
           selected: i === this.selected,
           showScore: false,
@@ -378,7 +398,7 @@ export class SonarModal extends Modal {
 
   private renderPreview(): void {
     const item = this.rows[this.selected];
-    if (!item || item.create) {
+    if (!item || item.create || item.exo) {
       this.previewEl.empty();
       this.previewEl.addClass('is-empty');
       this.renderedPath = null;
@@ -452,7 +472,32 @@ export class SonarModal extends Modal {
       void this.createNote(item.basename);
       return;
     }
+    if (item.exo) {
+      this.askExo(item.basename);
+      return;
+    }
     this.openPath(item.path, newTab);
+  }
+
+  /** The Exo plugin instance, if installed, enabled, and exposing its public
+   *  cross-plugin API. Null otherwise — callers must degrade gracefully. */
+  private exoPlugin(): ExoApi | null {
+    const plugins = (this.app as unknown as {
+      plugins?: { plugins?: Record<string, unknown> };
+    }).plugins?.plugins;
+    const p = plugins?.['exo'] as ExoApi | undefined;
+    return p && typeof p.askExo === 'function' ? p : null;
+  }
+
+  /** Hand the query off to a new default-model Exo chat, then dismiss. */
+  private askExo(query: string): void {
+    const exo = this.exoPlugin();
+    if (!exo) {
+      new Notice('Sonar: Exo is not available.');
+      return;
+    }
+    void exo.askExo(query);
+    this.close();
   }
 
   private openPath(path: string, newTab: boolean): void {

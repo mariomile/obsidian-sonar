@@ -6,6 +6,17 @@ interface HttpModule {
   createServer(handler: (req: IncomingMessage, res: ServerResponse) => void): Server;
 }
 
+const JSON_HEADERS = {
+  'Content-Type': 'application/json; charset=utf-8',
+  'Cache-Control': 'no-store',
+} as const;
+
+/** Reject DNS-rebinding hosts; the API is intentionally loopback-only. */
+export function isAllowedLoopbackHost(host: string | undefined, port: number): boolean {
+  const normalized = host?.trim().toLowerCase();
+  return normalized === `127.0.0.1:${port}` || normalized === `localhost:${port}`;
+}
+
 export type HttpStatus =
   | { state: 'stopped' }
   | { state: 'listening'; port: number }
@@ -80,7 +91,13 @@ export class HttpServer {
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (!isAllowedLoopbackHost(req.headers.host, this.port)) {
+      return this.json(res, 403, { error: 'forbidden host' });
+    }
+    if (req.method !== 'GET') {
+      res.setHeader('Allow', 'GET');
+      return this.json(res, 405, { error: 'method not allowed' });
+    }
     const url = new URL(req.url ?? '/', `http://localhost:${this.port}`);
 
     if (url.pathname === '/health') {
@@ -121,7 +138,7 @@ export class HttpServer {
   }
 
   private json(res: ServerResponse, code: number, body: unknown): void {
-    res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.writeHead(code, JSON_HEADERS);
     res.end(JSON.stringify(body));
   }
 }

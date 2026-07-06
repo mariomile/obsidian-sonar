@@ -43,6 +43,17 @@ GET http://localhost:51361/health
 
 The `/search` response matches Omnisearch's shape, so it's a drop-in replacement. Disable Omnisearch's HTTP API first to free the port.
 
+The server binds only to `127.0.0.1`, accepts loopback `Host` headers only, and
+does not enable browser CORS. This keeps arbitrary websites and DNS-rebinding
+hosts from reading filenames or note excerpts. The API is disabled by default.
+
+## Privacy
+
+Sonar indexes and searches vault content locally. It sends no note content,
+telemetry, or analytics to the plugin author or to a Sonar service. The optional
+HTTP API exposes search results only to local non-browser clients and remains
+off until explicitly enabled.
+
 ## Architecture
 
 The ranking engine (`src/index/`) is pure TypeScript with zero Obsidian imports, fully unit-tested headless:

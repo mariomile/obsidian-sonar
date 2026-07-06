@@ -5,4 +5,4 @@
  * instead of crashing. Deliberately sparse — add exports only if a test
  * genuinely needs one.
  */
-export {};
+export class Notice {}
