@@ -59,7 +59,14 @@
   background-color: var(--background-modifier-hover);
   color: var(--text-normal);
 }
-.sonar-icon-btn svg {
+/* The icon lives in an inner span (.sonar-icon-btn__glyph), never directly on
+ * the <button> — a direct SVG child of a native button gets its width
+ * collapsed in this environment (button + flex + a replaced-element direct
+ * child). Wrapping it, like .sonar-chip__icon already does, sidesteps it. */
+.sonar-icon-btn__glyph {
+  display: flex;
+}
+.sonar-icon-btn .sonar-icon-btn__glyph svg {
   width: 16px;
   height: 16px;
 }
@@ -129,7 +136,7 @@
   background: var(--background-modifier-border-hover);
   color: var(--text-normal);
 }
-.sonar-input-clear svg {
+.sonar-input-clear .sonar-icon-btn__glyph svg {
   width: 12px;
   height: 12px;
 }

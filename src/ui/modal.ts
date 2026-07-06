@@ -103,7 +103,11 @@ export class SonarModal extends Modal {
       cls: 'sonar-input-clear',
       attr: { 'aria-label': 'Clear search' },
     });
-    setIcon(this.clearBtn, 'x');
+    // The icon lives in an inner span rather than directly on the <button> —
+    // a direct SVG child of a native button gets its width collapsed in this
+    // environment (button + flex + a replaced-element direct child; wrapping
+    // it, like .sonar-chip__icon already does, sidesteps it entirely).
+    setIcon(this.clearBtn.createSpan({ cls: 'sonar-icon-btn__glyph' }), 'x');
     this.clearBtn.addEventListener('click', () => {
       this.inputEl.value = '';
       this.inputEl.focus();
@@ -114,7 +118,7 @@ export class SonarModal extends Modal {
       cls: 'sonar-icon-btn sonar-close',
       attr: { 'aria-label': 'Close' },
     });
-    setIcon(closeBtn, 'x');
+    setIcon(closeBtn.createSpan({ cls: 'sonar-icon-btn__glyph' }), 'x');
     closeBtn.addEventListener('click', () => this.close());
 
     this.chipsEl = this.contentEl.createDiv({ cls: 'sonar-chips' });
@@ -395,7 +399,7 @@ export class SonarModal extends Modal {
       cls: 'sonar-icon-btn',
       attr: { 'aria-label': 'Open note' },
     });
-    setIcon(open, 'external-link');
+    setIcon(open.createSpan({ cls: 'sonar-icon-btn__glyph' }), 'external-link');
     open.addEventListener('click', () => this.openPath(item.path, false));
 
     const bodyEl = this.previewEl.createDiv({ cls: 'sonar-preview__body markdown-rendered' });
