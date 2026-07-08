@@ -37,4 +37,14 @@ describe('subsequenceScore', () => {
   it('empty query returns null', () => {
     expect(subsequenceScore('', 'anything')).toBeNull();
   });
+
+  it('an exact match outscores a prefix match', () => {
+    expect(subsequenceScore('lean', 'lean')!).toBeGreaterThan(subsequenceScore('lean', 'lean canvas')!);
+  });
+
+  it('a prefix match outscores a scattered subsequence of the same query', () => {
+    const prefix = subsequenceScore('lean', 'Lean Canvas')!;
+    const scattered = subsequenceScore('lean', 'Long essay about numbers')!; // l..e..a..n scattered
+    expect(prefix).toBeGreaterThan(scattered);
+  });
 });

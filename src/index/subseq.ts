@@ -53,5 +53,11 @@ export function subsequenceScore(query: string, candidate: string): number | nul
   // Prefer matches that start earlier and are less spread out.
   score -= firstMatch * 0.1;
   score -= (prevMatch - firstMatch - (q.length - 1)) * 0.2; // total gap length
+
+  // Whole-name signals dominate scattered subsequences: an exact basename beats
+  // a prefix, which beats any interior match.
+  if (c === q) score += 16;
+  else if (c.startsWith(q)) score += 8;
+
   return score;
 }

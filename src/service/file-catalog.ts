@@ -33,6 +33,19 @@ export function searchCatalog(
 }
 
 /**
+ * Minimum subsequence score to accept, scaled by query length. Short queries
+ * match almost anything, so they need a higher bar to avoid flooding the fused
+ * list with weak name hits; longer queries can relax.
+ */
+export function minScoreFor(query: string): number {
+  const n = query.trim().length;
+  if (n <= 1) return 12;
+  if (n === 2) return 8;
+  if (n === 3) return 5;
+  return 4;
+}
+
+/**
  * Lightweight index of EVERY file in the vault (all extensions), maintained
  * incrementally. Powers the universal file finder. Not serialized — rebuilt
  * from `vault.getFiles()` at boot in a few ms.
@@ -72,7 +85,10 @@ export class FileCatalog {
   }
 
   search(query: string, limit: number): FileHit[] {
-    // minScore keeps 1–2 char queries from flooding results with weak matches.
-    return searchCatalog([...this.records.values()], query, { limit, minScore: 2 });
+    // Length-scaled minScore keeps short queries from flooding with weak hits.
+    return searchCatalog([...this.records.values()], query, {
+      limit,
+      minScore: minScoreFor(query),
+    });
   }
 }
