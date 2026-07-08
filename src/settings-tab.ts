@@ -63,6 +63,7 @@ export class SonarSettingTab extends PluginSettingTab {
         t.setValue(s.indexPdf).onChange(async (v) => {
           s.indexPdf = v;
           await this.plugin.saveSettings();
+          if (v) void this.plugin.service.extractor?.run();
         }),
       );
 
@@ -73,6 +74,7 @@ export class SonarSettingTab extends PluginSettingTab {
         t.setValue(s.indexImages).onChange(async (v) => {
           s.indexImages = v;
           await this.plugin.saveSettings();
+          if (v) void this.plugin.service.extractor?.run();
         }),
       );
 
@@ -144,7 +146,16 @@ export class SonarSettingTab extends PluginSettingTab {
           b.setDisabled(true).setButtonText('Rebuilding…');
           await this.plugin.service.rebuild();
           b.setDisabled(false).setButtonText('Rebuild');
+          this.display();
         }),
       );
+
+    const skipped = this.plugin.service.getStatus().skipped;
+    if (skipped > 0) {
+      containerEl.createDiv({
+        cls: 'sonar-http-status is-error',
+        text: `${skipped} file${skipped === 1 ? '' : 's'} skipped (failed to index/extract). Rebuild to retry.`,
+      });
+    }
   }
 }

@@ -10,6 +10,7 @@ import type { Excerpt } from '../types.ts';
 import type { SonarSettings } from '../settings.ts';
 import type { Extractor } from './extractor.ts';
 import type { FrecencyTracker } from './frecency.ts';
+import { yieldToEventLoop } from './yield.ts';
 
 export interface KeywordHit extends SearchResult {
   excerpt?: Excerpt;
@@ -19,6 +20,8 @@ export interface IndexStatus {
   ready: boolean;
   indexed: number;
   total: number;
+  /** Files that failed to index/extract this session (md/html + attachments). */
+  skipped: number;
 }
 
 export interface QueryOptions {
@@ -42,8 +45,6 @@ const COMPACT_MIN = 2_000;
 const READ_TIMEOUT_MS = 5_000;
 /** Parallel file reads during the initial build (I/O-bound → concurrency helps). */
 const READ_CONCURRENCY = 12;
-
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /** Resolve `p`, or reject after `ms` — so one stuck read can't stall indexing. */
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -83,6 +84,7 @@ export class SearchService {
   private ready = false;
   private indexed = 0;
   private total = 0;
+  private failedCount = 0;
 
   private readonly debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly pending = new Map<string, 'change' | 'delete'>();
@@ -99,7 +101,12 @@ export class SearchService {
   ) {}
 
   getStatus(): IndexStatus {
-    return { ready: this.ready, indexed: this.indexed, total: this.total };
+    return {
+      ready: this.ready,
+      indexed: this.indexed,
+      total: this.total,
+      skipped: this.failedCount + (this.extractor?.skippedCount() ?? 0),
+    };
   }
 
   onProgress(cb: (status: IndexStatus) => void): () => void {
@@ -121,40 +128,38 @@ export class SearchService {
         if (file instanceof TFile && file.extension === 'md') this.onChanged(file.path);
       }),
     );
-    // HTML has no metadata cache, so it needs raw vault create/modify events.
+    // HTML has no metadata cache, so it needs raw vault create/modify events;
+    // PDFs/images route to the extractor for incremental (re)indexing.
     registerEvent(
       vault.on('create', (file) => {
-        if (
-          file instanceof TFile &&
-          file.extension.toLowerCase() === 'html' &&
-          this.settings.indexHtml
-        ) {
-          this.onChanged(file.path);
-        }
+        if (!(file instanceof TFile)) return;
+        if (file.extension.toLowerCase() === 'html' && this.settings.indexHtml) this.onChanged(file.path);
+        else if (this.ready) void this.extractor?.extractFile(file);
       }),
     );
     registerEvent(
       vault.on('modify', (file) => {
-        if (
-          file instanceof TFile &&
-          file.extension.toLowerCase() === 'html' &&
-          this.settings.indexHtml
-        ) {
-          this.onChanged(file.path);
-        }
+        if (!(file instanceof TFile)) return;
+        if (file.extension.toLowerCase() === 'html' && this.settings.indexHtml) this.onChanged(file.path);
+        else if (this.ready) void this.extractor?.extractFile(file);
       }),
     );
     registerEvent(
       vault.on('delete', (file) => {
-        if (file instanceof TFile) this.onDeleted(file.path);
+        if (file instanceof TFile) {
+          this.onDeleted(file.path);
+          this.extractor?.remove(file.path);
+        }
       }),
     );
     registerEvent(
       vault.on('rename', (file, oldPath) => {
         this.onDeleted(oldPath);
+        this.extractor?.remove(oldPath);
         if (file instanceof TFile) {
           const ext = file.extension.toLowerCase();
           if (ext === 'md' || (ext === 'html' && this.settings.indexHtml)) this.onChanged(file.path);
+          else if (this.ready) void this.extractor?.extractFile(file);
         }
       }),
     );
@@ -232,11 +237,12 @@ export class SearchService {
           else await this.indexFile(file);
         } catch (e) {
           console.warn('Sonar: failed to index', file.path, e);
+          this.failedCount++;
         }
         this.indexed++;
         if (performance.now() - sliceStart > SLICE_MS) {
           this.emitProgress();
-          await sleep(0);
+          await yieldToEventLoop();
           sliceStart = performance.now();
         }
       }
@@ -485,6 +491,7 @@ export class SearchService {
   /** Rebuild the whole index from scratch (settings-tab action). */
   async rebuild(): Promise<void> {
     this.ready = false;
+    this.failedCount = 0;
     this.index.loadSnapshot({ docs: [], terms: [] });
     await this.buildInitial();
   }
