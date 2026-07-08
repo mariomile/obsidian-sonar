@@ -91,4 +91,15 @@ export class FileCatalog {
       minScore: minScoreFor(query),
     });
   }
+
+  /** Most recently modified files (all types), optionally filtered — powers a
+   *  catalog-backed empty-query browse for types the index doesn't hold. */
+  recent(limit: number, predicate?: (rec: FileRecord) => boolean): FileRecord[] {
+    const out: FileRecord[] = [];
+    for (const rec of this.records.values()) {
+      if (!predicate || predicate(rec)) out.push(rec);
+    }
+    out.sort((a, b) => b.mtime - a.mtime);
+    return out.slice(0, limit);
+  }
 }

@@ -86,6 +86,7 @@ export default class SonarPlugin extends Plugin {
     new SonarModal(this.app, {
       registry: this.registry,
       service: this.service,
+      fileCatalog: this.fileCatalog,
       settings: this.settings,
       now: () => Date.now(),
     }).open();

@@ -15,12 +15,14 @@ import { groupByRecency } from '../index/time-buckets.ts';
 import type { SonarSettings } from '../settings.ts';
 import type { ProviderRegistry } from '../service/provider-registry.ts';
 import type { SearchService } from '../service/search-service.ts';
+import type { FileCatalog } from '../service/file-catalog.ts';
 import { renderResultRow } from './result-renderer.ts';
 import { FilterSuggest } from './filter-suggest.ts';
 
 export interface ModalDeps {
   registry: ProviderRegistry;
   service: SearchService;
+  fileCatalog: FileCatalog;
   settings: SonarSettings;
   now: () => number;
 }
@@ -58,6 +60,9 @@ const TYPE_OPTIONS: TypeOption[] = [
   { key: 'audio', label: 'Audio', test: (e) => AUDIO_EXTS.has(e) },
   { key: 'video', label: 'Video', test: (e) => VIDEO_EXTS.has(e) },
 ];
+
+/** Type keys the content index holds; others live only in the file catalog. */
+const INDEXED_TYPE_KEYS = new Set(['note', 'pdf', 'image', 'html']);
 
 /** Lowercase file extension from a path, or '' if none. */
 function extOf(path: string): string {
@@ -408,6 +413,12 @@ export class SonarModal extends Modal {
   }
 
   private buildBrowse(): void {
+    // Catalog-only types (canvas/base/audio/video) aren't in the content index,
+    // so browse them from the file catalog instead of recent index docs.
+    if (this.typeFilter && !INDEXED_TYPE_KEYS.has(this.typeFilter)) {
+      this.buildCatalogBrowse();
+      return;
+    }
     const recent = this.deps.service.recent(BROWSE_LIMIT, {
       pathFilters: this.pathFilters,
       tagFilters: this.tagFilters,
@@ -428,6 +439,26 @@ export class SonarModal extends Modal {
           .filter((i) => this.passesType(i)),
       }))
       .filter((g) => g.items.length > 0);
+    this.commitRows(prevPath);
+  }
+
+  /** Empty-query browse for catalog-only file types (canvas/base/audio/video). */
+  private buildCatalogBrowse(): void {
+    const opt = TYPE_OPTIONS.find((t) => t.key === this.typeFilter);
+    const recs = this.deps.fileCatalog.recent(BROWSE_LIMIT, (r) =>
+      opt ? opt.test(r.ext, 'md') : true,
+    );
+    const prevPath = this.rows[this.selected]?.path;
+    this.groups = groupByRecency(recs, (r) => r.mtime, this.deps.now()).map((g) => ({
+      label: g.label,
+      items: g.items.map((r) => ({
+        path: r.path,
+        basename: r.basename,
+        docType: 'md' as DocType,
+        ext: r.ext,
+        matched: [],
+      })),
+    }));
     this.commitRows(prevPath);
   }
 
