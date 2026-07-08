@@ -22,6 +22,9 @@ export class FileFinderProvider implements SearchProvider {
   readonly label = 'Files';
   readonly mode = 'instant' as const;
   readonly fused = true;
+  /** A filename match counts less than a content match at equal rank, so a
+   *  strong keyword hit isn't tied by a loose subsequence name match. */
+  readonly fuseWeight = 0.6;
 
   constructor(private readonly catalog: FileCatalog) {}
 

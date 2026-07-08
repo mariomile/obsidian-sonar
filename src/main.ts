@@ -6,6 +6,7 @@ import { ProviderRegistry } from './service/provider-registry.ts';
 import { KeywordProvider } from './service/keyword-provider.ts';
 import { FileCatalog } from './service/file-catalog.ts';
 import { FileFinderProvider } from './service/file-finder-provider.ts';
+import { FrecencyTracker } from './service/frecency.ts';
 import { HttpServer } from './service/http-server.ts';
 import { SonarSettingTab } from './settings-tab.ts';
 import { SonarModal } from './ui/modal.ts';
@@ -16,6 +17,7 @@ export default class SonarPlugin extends Plugin {
   private registry!: ProviderRegistry;
   private extractor!: Extractor;
   private fileCatalog!: FileCatalog;
+  private frecency!: FrecencyTracker;
   private httpServer: HttpServer | null = null;
 
   async onload(): Promise<void> {
@@ -26,6 +28,10 @@ export default class SonarPlugin extends Plugin {
       this.service.scheduleSave(),
     );
     this.service.extractor = this.extractor;
+
+    this.frecency = new FrecencyTracker(this.app, this.manifest.dir);
+    this.service.frecency = this.frecency;
+    void this.frecency.load();
 
     this.registry = new ProviderRegistry();
     this.registry.register(new KeywordProvider(this.service));
@@ -45,6 +51,7 @@ export default class SonarPlugin extends Plugin {
     this.addSettingTab(new SonarSettingTab(this.app, this));
 
     this.service.start((ref) => this.registerEvent(ref));
+    this.frecency.start((ref) => this.registerEvent(ref), () => Date.now());
 
     // The file catalog powers the universal file finder over every file type.
     // It's rebuilt from getFiles() at layout-ready and kept fresh incrementally.
@@ -72,12 +79,14 @@ export default class SonarPlugin extends Plugin {
   onunload(): void {
     this.httpServer?.stop();
     this.service.dispose();
+    this.frecency?.dispose();
   }
 
   private openModal(): void {
     new SonarModal(this.app, {
       registry: this.registry,
       service: this.service,
+      fileCatalog: this.fileCatalog,
       settings: this.settings,
       now: () => Date.now(),
     }).open();

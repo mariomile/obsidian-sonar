@@ -34,6 +34,9 @@ export interface SearchProvider {
   /** Whether results merge into the main ranked list (true) or show as their
    *  own labeled section (false). */
   fused: boolean;
+  /** RRF weight for this provider's list when fused (default 1). Lower = its
+   *  matches count less at equal rank — e.g. filename hits vs content hits. */
+  fuseWeight?: number;
   isAvailable(): boolean;
   search(raw: string, opts: ProviderSearchOptions): Promise<ProviderResult[]>;
 }

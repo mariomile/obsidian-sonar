@@ -9,6 +9,7 @@ import { TOKENIZER_VERSION } from '../index/tokenizer.ts';
 import type { Excerpt } from '../types.ts';
 import type { SonarSettings } from '../settings.ts';
 import type { Extractor } from './extractor.ts';
+import type { FrecencyTracker } from './frecency.ts';
 
 export interface KeywordHit extends SearchResult {
   excerpt?: Excerpt;
@@ -89,6 +90,7 @@ export class SearchService {
   private readonly progressListeners = new Set<(status: IndexStatus) => void>();
 
   extractor: Extractor | null = null;
+  frecency: FrecencyTracker | null = null;
 
   constructor(
     private readonly app: App,
@@ -326,6 +328,12 @@ export class SearchService {
       minMtime: opts.minMtime,
       bodyFuzzy: this.settings.bodyFuzzy,
     });
+    // Nudge results the user opens often/recently up the list (interaction
+    // signal the pure index can't carry). Gentle: reorders within the top-N.
+    if (this.frecency) {
+      for (const r of results) r.score *= this.frecency.boost(r.path, opts.now);
+      results.sort((a, b) => b.score - a.score);
+    }
     const hits: KeywordHit[] = [];
     for (const r of results) {
       if (opts.signal?.aborted) break;

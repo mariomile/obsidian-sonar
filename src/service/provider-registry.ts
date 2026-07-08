@@ -88,12 +88,18 @@ export class ProviderRegistry {
 
   private assemble(sections: Map<string, ProviderSection>, limit: number): RegistryUpdate {
     const fusedLists: ProviderResult[][] = [];
+    const fuseWeights: number[] = [];
     const extraSections: ProviderSection[] = [];
     for (const section of sections.values()) {
-      if (section.fused) fusedLists.push(section.results);
-      else extraSections.push(section);
+      if (section.fused) {
+        fusedLists.push(section.results);
+        const provider = this.providers.find((p) => p.id === section.providerId);
+        fuseWeights.push(provider?.fuseWeight ?? 1);
+      } else {
+        extraSections.push(section);
+      }
     }
-    const fused = reciprocalRankFusion(fusedLists)
+    const fused = reciprocalRankFusion(fusedLists, 60, fuseWeights)
       .map((f) => f.item)
       .slice(0, limit);
     return { fused, sections: extraSections };

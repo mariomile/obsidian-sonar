@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { searchCatalog, type FileRecord } from './file-catalog.ts';
+import { searchCatalog, minScoreFor, type FileRecord } from './file-catalog.ts';
 
 const recs: FileRecord[] = [
   { path: 'src/service/search-service.ts', basename: 'search-service', ext: 'ts', mtime: 3 },
@@ -35,5 +35,14 @@ describe('searchCatalog', () => {
     ];
     const hits = searchCatalog(two, 'note', { limit: 10 });
     expect(hits[0]!.path).toBe('b/note.md');
+  });
+});
+
+describe('minScoreFor', () => {
+  it('demands a higher score for shorter queries', () => {
+    expect(minScoreFor('a')).toBeGreaterThan(minScoreFor('ab'));
+    expect(minScoreFor('ab')).toBeGreaterThan(minScoreFor('abc'));
+    expect(minScoreFor('abc')).toBeGreaterThan(minScoreFor('abcd'));
+    expect(minScoreFor('abcde')).toBe(minScoreFor('abcd'));
   });
 });
