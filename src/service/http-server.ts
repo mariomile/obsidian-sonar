@@ -112,8 +112,10 @@ export class HttpServer {
     if (url.pathname === '/search') {
       const q = url.searchParams.get('q') ?? '';
       if (!q.trim()) return this.json(res, 200, []);
+      const limitParam = Number(url.searchParams.get('limit'));
+      const limit = Number.isInteger(limitParam) && limitParam > 0 ? Math.min(limitParam, 100) : 50;
       try {
-        const hits = await this.service.query(q, { limit: 50, now: Date.now() });
+        const hits = await this.service.query(q, { limit, now: Date.now() });
         return this.json(
           res,
           200,
@@ -121,6 +123,9 @@ export class HttpServer {
             score: h.score,
             path: h.path,
             basename: h.basename,
+            // Additive fields (don't break Omnisearch-shape consumers).
+            type: h.docType,
+            ext: h.path.includes('.') ? h.path.slice(h.path.lastIndexOf('.') + 1).toLowerCase() : '',
             excerpt: h.excerpt?.text ?? '',
             foundWords: h.matched,
             matches: (h.excerpt?.ranges ?? []).map(([start, end]) => ({
