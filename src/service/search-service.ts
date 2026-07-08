@@ -28,6 +28,7 @@ export interface QueryOptions {
   pathFilters?: string[];
   tagFilters?: string[];
   minMtime?: number;
+  bodyFuzzy?: 'off' | 'on-sparse' | 'always';
 }
 
 /** Max markdown chars fed to the preview renderer (avoids rendering huge notes). */
@@ -323,6 +324,7 @@ export class SearchService {
       pathFilters: opts.pathFilters,
       tagFilters: opts.tagFilters,
       minMtime: opts.minMtime,
+      bodyFuzzy: this.settings.bodyFuzzy,
     });
     const hits: KeywordHit[] = [];
     for (const r of results) {

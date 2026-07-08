@@ -1,3 +1,5 @@
+export type BodyFuzzy = 'off' | 'on-sparse' | 'always';
+
 export interface SonarSettings {
   /** Expose the Omnisearch-compatible HTTP search API (desktop only). */
   httpEnabled: boolean;
@@ -14,6 +16,8 @@ export interface SonarSettings {
   maxResults: number;
   /** Show per-result score badges and query timing (for tuning ranking). */
   showScoreDebug: boolean;
+  /** When body Levenshtein fuzzy fires. */
+  bodyFuzzy: BodyFuzzy;
 }
 
 export const DEFAULT_SETTINGS: SonarSettings = {
@@ -25,6 +29,7 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   maxAttachmentMB: 20,
   maxResults: 20,
   showScoreDebug: false,
+  bodyFuzzy: 'on-sparse',
 };
 
 /** Coerce loaded data into valid settings, filling defaults for missing keys. */
@@ -48,5 +53,9 @@ export function parseSettings(data: unknown): SonarSettings {
         ? maxResults
         : DEFAULT_SETTINGS.maxResults,
     showScoreDebug: Boolean(d.showScoreDebug),
+    bodyFuzzy:
+      d.bodyFuzzy === 'off' || d.bodyFuzzy === 'always'
+        ? d.bodyFuzzy
+        : DEFAULT_SETTINGS.bodyFuzzy,
   };
 }

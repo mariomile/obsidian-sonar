@@ -30,4 +30,11 @@ describe('parseSettings', () => {
     expect(parseSettings({}).indexHtml).toBe(true);
     expect(parseSettings({ indexHtml: 0 }).indexHtml).toBe(false);
   });
+
+  it('defaults bodyFuzzy to on-sparse and rejects unknown values', () => {
+    expect(parseSettings({}).bodyFuzzy).toBe('on-sparse');
+    expect(parseSettings({ bodyFuzzy: 'always' }).bodyFuzzy).toBe('always');
+    expect(parseSettings({ bodyFuzzy: 'off' }).bodyFuzzy).toBe('off');
+    expect(parseSettings({ bodyFuzzy: 'nonsense' }).bodyFuzzy).toBe('on-sparse');
+  });
 });
