@@ -1,4 +1,4 @@
-import { type App, TFile } from 'obsidian';
+import type { App, TFile } from 'obsidian';
 import { subsequenceScore } from '../index/subseq.ts';
 
 export interface FileRecord {
