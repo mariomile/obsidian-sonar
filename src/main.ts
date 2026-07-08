@@ -24,10 +24,15 @@ export default class SonarPlugin extends Plugin {
     this.settings = parseSettings(await this.loadData());
 
     this.service = new SearchService(this.app, this.settings, this.manifest.dir);
-    this.extractor = new Extractor(this.app, this.settings, this.service.index, () =>
-      this.service.scheduleSave(),
+    this.extractor = new Extractor(
+      this.app,
+      this.settings,
+      this.service.index,
+      () => this.service.scheduleSave(),
+      this.manifest.dir,
     );
     this.service.extractor = this.extractor;
+    void this.extractor.load();
 
     this.frecency = new FrecencyTracker(this.app, this.manifest.dir);
     this.service.frecency = this.frecency;
@@ -80,6 +85,7 @@ export default class SonarPlugin extends Plugin {
     this.httpServer?.stop();
     this.service.dispose();
     this.frecency?.dispose();
+    this.extractor?.dispose();
   }
 
   private openModal(): void {
