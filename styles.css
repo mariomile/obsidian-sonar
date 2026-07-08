@@ -103,14 +103,27 @@
   background: transparent;
   outline: none;
   box-shadow: none;
-  font-size: var(--font-ui-large);
+  font-size: var(--font-ui-medium);
   color: var(--text-normal);
   padding: 0;
   padding-right: 52px; /* room for the inline "Clear" button */
 }
-.sonar-modal .sonar-input:focus {
-  box-shadow: none;
-  outline: none;
+/* No focus indicator at all: !important defeats theme/core :focus-visible rings
+ * that would otherwise draw a box around the flat search field. */
+.sonar-modal .sonar-input:focus,
+.sonar-modal .sonar-input:focus-visible {
+  box-shadow: none !important;
+  outline: none !important;
+  border: none !important;
+  background: transparent !important;
+}
+/* Belt-and-suspenders: kill any ring a theme draws on the wrapper when the
+ * field is focused (some themes target :focus-within, not the input itself). */
+.sonar-modal .sonar-input-wrap:focus-within,
+.sonar-modal .sonar-input-row:focus-within {
+  box-shadow: none !important;
+  outline: none !important;
+  background: transparent !important;
 }
 .sonar-input::placeholder {
   color: var(--text-faint);

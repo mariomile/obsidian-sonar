@@ -29,10 +29,41 @@ interface RowItem {
   path: string;
   basename: string;
   docType: DocType;
+  ext?: string;
   matched: string[];
   excerpt?: { text: string; ranges: Array<[number, number]> };
   create?: boolean;
   exo?: boolean;
+}
+
+/** A file-type filter option. `test` runs against a result's derived extension
+ *  and its indexed docType (keyword results carry docType but no ext). */
+interface TypeOption {
+  key: string;
+  label: string;
+  test: (ext: string, docType: DocType) => boolean;
+}
+
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tiff', 'svg', 'heic', 'avif']);
+const AUDIO_EXTS = new Set(['mp3', 'wav', 'm4a', 'flac', 'ogg', 'aac']);
+const VIDEO_EXTS = new Set(['mp4', 'mov', 'webm', 'mkv', 'avi']);
+
+const TYPE_OPTIONS: TypeOption[] = [
+  { key: 'note', label: 'Notes', test: (e, d) => e === 'md' || d === 'md' },
+  { key: 'pdf', label: 'PDF', test: (e, d) => e === 'pdf' || d === 'pdf' },
+  { key: 'image', label: 'Images', test: (e, d) => IMAGE_EXTS.has(e) || d === 'image' },
+  { key: 'html', label: 'HTML', test: (e, d) => e === 'html' || e === 'htm' || d === 'html' },
+  { key: 'canvas', label: 'Canvas', test: (e) => e === 'canvas' },
+  { key: 'base', label: 'Bases', test: (e) => e === 'base' },
+  { key: 'audio', label: 'Audio', test: (e) => AUDIO_EXTS.has(e) },
+  { key: 'video', label: 'Video', test: (e) => VIDEO_EXTS.has(e) },
+];
+
+/** Lowercase file extension from a path, or '' if none. */
+function extOf(path: string): string {
+  const dot = path.lastIndexOf('.');
+  const slash = path.lastIndexOf('/');
+  return dot > slash ? path.slice(dot + 1).toLowerCase() : '';
 }
 
 /** Minimal shape of the Exo plugin's public cross-plugin API. */
@@ -76,6 +107,7 @@ export class SonarModal extends Modal {
   private folderFilter: string | null = null;
   private tagFilter: string | null = null;
   private dateFilter: DateFilter | null = null;
+  private typeFilter: string | null = null;
 
   private cancelQuery: (() => void) | null = null;
   private queryStart = 0;
@@ -179,6 +211,17 @@ export class SonarModal extends Modal {
       (e) => this.pickDate(e),
       this.dateFilter !== null ? () => this.setDate(null) : undefined,
     );
+    this.makeChip(
+      'file',
+      this.typeFilter ? `Type: ${this.typeLabel(this.typeFilter)}` : 'Type',
+      this.typeFilter !== null,
+      (e) => this.pickType(e),
+      this.typeFilter !== null ? () => this.setType(null) : undefined,
+    );
+  }
+
+  private typeLabel(key: string): string {
+    return TYPE_OPTIONS.find((t) => t.key === key)?.label ?? key;
   }
 
   private makeChip(
@@ -246,6 +289,37 @@ export class SonarModal extends Modal {
     menu.showAtMouseEvent(e);
   }
 
+  private pickType(e: MouseEvent): void {
+    const menu = new Menu();
+    for (const opt of TYPE_OPTIONS) {
+      menu.addItem((item) =>
+        item
+          .setTitle(opt.label)
+          .setChecked(this.typeFilter === opt.key)
+          .onClick(() => this.setType(opt.key)),
+      );
+    }
+    menu.addSeparator();
+    menu.addItem((item) => item.setTitle('Any type').onClick(() => this.setType(null)));
+    menu.showAtMouseEvent(e);
+  }
+
+  private setType(value: string | null): void {
+    this.typeFilter = value;
+    this.renderChips();
+    this.refresh();
+    this.inputEl.focus();
+  }
+
+  /** A row passes the type filter when none is set, when it's an action row
+   *  (create/exo), or when its extension/docType matches the chosen type. */
+  private passesType(item: RowItem): boolean {
+    if (!this.typeFilter || item.create || item.exo) return true;
+    const opt = TYPE_OPTIONS.find((t) => t.key === this.typeFilter);
+    if (!opt) return true;
+    return opt.test(item.ext ?? extOf(item.path), item.docType);
+  }
+
   private setFolder(value: string | null): void {
     this.folderFilter = value;
     this.renderChips();
@@ -295,7 +369,11 @@ export class SonarModal extends Modal {
     this.cancelQuery = this.deps.registry.query(
       raw,
       {
-        limit: this.deps.settings.maxResults,
+        // Over-fetch when a type filter is active: it's applied after fusion,
+        // so we need a deeper pool to still fill the visible list.
+        limit: this.typeFilter
+          ? this.deps.settings.maxResults * 6
+          : this.deps.settings.maxResults,
         now: this.deps.now(),
         titleOnly: this.titleOnly,
         pathFilters: this.pathFilters,
@@ -303,13 +381,17 @@ export class SonarModal extends Modal {
         minMtime: this.dateFilter?.minMtime,
       },
       (update) => {
-        const items: RowItem[] = update.fused.map((r) => ({
+        let items: RowItem[] = update.fused.map((r) => ({
           path: r.path,
           basename: r.basename,
           docType: r.docType,
+          ext: r.ext ?? extOf(r.path),
           matched: r.matched,
           excerpt: r.excerpt,
         }));
+        if (this.typeFilter) {
+          items = items.filter((i) => this.passesType(i)).slice(0, this.deps.settings.maxResults);
+        }
         if (items.length < 3) {
           const q = this.raw.trim();
           items.push({ path: '', basename: q, docType: 'md', matched: [], create: true });
@@ -332,15 +414,20 @@ export class SonarModal extends Modal {
       minMtime: this.dateFilter?.minMtime,
     });
     const prevPath = this.rows[this.selected]?.path;
-    this.groups = groupByRecency(recent, (r) => r.mtime, this.deps.now()).map((g) => ({
-      label: g.label,
-      items: g.items.map((r) => ({
-        path: r.path,
-        basename: r.basename,
-        docType: r.docType,
-        matched: [],
-      })),
-    }));
+    this.groups = groupByRecency(recent, (r) => r.mtime, this.deps.now())
+      .map((g) => ({
+        label: g.label,
+        items: g.items
+          .map((r) => ({
+            path: r.path,
+            basename: r.basename,
+            docType: r.docType,
+            ext: extOf(r.path),
+            matched: [],
+          }))
+          .filter((i) => this.passesType(i)),
+      }))
+      .filter((g) => g.items.length > 0);
     this.commitRows(prevPath);
   }
 
