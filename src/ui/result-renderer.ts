@@ -11,6 +11,8 @@ export interface RenderableResult {
   docType: DocType;
   /** Raw file extension (lowercase), for icon selection on non-content files. */
   ext?: string;
+  /** Provider that produced this result (shown in debug mode). */
+  source?: string;
   matched: string[];
   score?: number;
   excerpt?: Excerpt;
@@ -47,6 +49,7 @@ export interface RowOptions {
   selected: boolean;
   showScore: boolean;
   onClick: (modKey: boolean) => void;
+  onContext?: (e: MouseEvent) => void;
 }
 
 /** Render one search result row and return its element. */
@@ -69,6 +72,9 @@ export function renderResultRow(
   if (opts.showScore && result.score !== undefined) {
     titleRow.createSpan({ cls: 'sonar-result__score', text: result.score.toFixed(2) });
   }
+  if (opts.showScore && result.source) {
+    titleRow.createSpan({ cls: 'sonar-result__source', text: result.source });
+  }
 
   const dir = result.path.includes('/') ? result.path.slice(0, result.path.lastIndexOf('/')) : '';
   if (dir) main.createDiv({ cls: 'sonar-result__path', text: dir });
@@ -79,5 +85,11 @@ export function renderResultRow(
   }
 
   row.addEventListener('click', (e) => opts.onClick(e.metaKey || e.ctrlKey));
+  if (opts.onContext) {
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      opts.onContext!(e);
+    });
+  }
   return row;
 }

@@ -32,6 +32,7 @@ interface RowItem {
   basename: string;
   docType: DocType;
   ext?: string;
+  source?: string;
   matched: string[];
   excerpt?: { text: string; ranges: Array<[number, number]> };
   create?: boolean;
@@ -70,6 +71,16 @@ function extOf(path: string): string {
   const slash = path.lastIndexOf('/');
   return dot > slash ? path.slice(dot + 1).toLowerCase() : '';
 }
+
+/** Last-used filters, kept module-scoped so they persist across reopens within
+ *  a session (reset on a full app restart). */
+const lastFilters: {
+  titleOnly: boolean;
+  folder: string | null;
+  tag: string | null;
+  date: DateFilter | null;
+  type: string | null;
+} = { titleOnly: false, folder: null, tag: null, date: null, type: null };
 
 /** Minimal shape of the Exo plugin's public cross-plugin API. */
 interface ExoApi {
@@ -125,6 +136,11 @@ export class SonarModal extends Modal {
     private readonly deps: ModalDeps,
   ) {
     super(app);
+    this.titleOnly = lastFilters.titleOnly;
+    this.folderFilter = lastFilters.folder;
+    this.tagFilter = lastFilters.tag;
+    this.dateFilter = lastFilters.date;
+    this.typeFilter = lastFilters.type;
   }
 
   onOpen(): void {
@@ -181,6 +197,11 @@ export class SonarModal extends Modal {
   }
 
   onClose(): void {
+    lastFilters.titleOnly = this.titleOnly;
+    lastFilters.folder = this.folderFilter;
+    lastFilters.tag = this.tagFilter;
+    lastFilters.date = this.dateFilter;
+    lastFilters.type = this.typeFilter;
     this.cancelQuery?.();
     this.previewComponent.unload();
     this.contentEl.empty();
@@ -391,6 +412,7 @@ export class SonarModal extends Modal {
           basename: r.basename,
           docType: r.docType,
           ext: r.ext ?? extOf(r.path),
+          source: r.source,
           matched: r.matched,
           excerpt: r.excerpt,
         }));
@@ -498,8 +520,9 @@ export class SonarModal extends Modal {
         }
         renderResultRow(holder, item, {
           selected: i === this.selected,
-          showScore: false,
+          showScore: this.deps.settings.showScoreDebug,
           onClick: (mod) => this.activate(i, mod),
+          onContext: (e) => this.openContextMenu(item, e),
         });
       }
     }
@@ -622,6 +645,54 @@ export class SonarModal extends Modal {
     }
   }
 
+  /** Right-click actions on a result row. */
+  private openContextMenu(item: RowItem, e: MouseEvent): void {
+    if (item.create || item.exo || !item.path) return;
+    const file = this.app.vault.getAbstractFileByPath(item.path);
+    if (!(file instanceof TFile)) return;
+    const open = (leaf: 'tab' | 'split' | false): void => {
+      void this.app.workspace.getLeaf(leaf).openFile(file);
+      this.close();
+    };
+    const menu = new Menu();
+    menu.addItem((i) => i.setTitle('Open').setIcon('file').onClick(() => open(false)));
+    menu.addItem((i) => i.setTitle('Open in new tab').setIcon('plus').onClick(() => open('tab')));
+    menu.addItem((i) =>
+      i.setTitle('Open to the right').setIcon('separator-vertical').onClick(() => open('split')),
+    );
+    menu.addSeparator();
+    menu.addItem((i) =>
+      i.setTitle('Reveal in file explorer').setIcon('folder').onClick(() => this.reveal(file)),
+    );
+    menu.addItem((i) =>
+      i
+        .setTitle('Copy path')
+        .setIcon('copy')
+        .onClick(() => {
+          void navigator.clipboard.writeText(item.path);
+          new Notice('Sonar: path copied');
+        }),
+    );
+    menu.showAtMouseEvent(e);
+  }
+
+  /** Reveal a file in the core file-explorer (best-effort; internal API). */
+  private reveal(file: TFile): void {
+    const fe = (
+      this.app as unknown as {
+        internalPlugins?: {
+          getEnabledPluginById?: (id: string) => { revealInFolder?: (f: TFile) => void } | null;
+        };
+      }
+    ).internalPlugins?.getEnabledPluginById?.('file-explorer');
+    if (fe?.revealInFolder) {
+      fe.revealInFolder(file);
+      this.close();
+    } else {
+      new Notice('Sonar: file explorer not available');
+    }
+  }
+
   private async createNote(name: string): Promise<void> {
     if (!name) return;
     try {
@@ -638,7 +709,8 @@ export class SonarModal extends Modal {
   private updateStatus(): void {
     const status = this.deps.service.getStatus();
     if (!status.ready) {
-      this.statusEl.setText(`Indexing… ${status.indexed}/${status.total}`);
+      const skipped = status.skipped > 0 ? ` · ${status.skipped} skipped` : '';
+      this.statusEl.setText(`Indexing… ${status.indexed}/${status.total}${skipped}`);
       return;
     }
     if (!this.raw.trim()) {
