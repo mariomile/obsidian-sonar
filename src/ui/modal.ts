@@ -107,13 +107,9 @@ export class SonarModal extends Modal {
     });
     this.clearBtn = inputWrap.createEl('button', {
       cls: 'sonar-input-clear',
+      text: 'Clear',
       attr: { 'aria-label': 'Clear search' },
     });
-    // The icon lives in an inner span rather than directly on the <button> —
-    // a direct SVG child of a native button gets its width collapsed in this
-    // environment (button + flex + a replaced-element direct child; wrapping
-    // it, like .sonar-chip__icon already does, sidesteps it entirely).
-    setIcon(this.clearBtn.createSpan({ cls: 'sonar-icon-btn__glyph' }), 'x');
     this.clearBtn.addEventListener('click', () => {
       this.inputEl.value = '';
       this.inputEl.focus();

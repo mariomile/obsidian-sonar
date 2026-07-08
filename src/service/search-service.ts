@@ -1,6 +1,7 @@
 import { type App, type CachedMetadata, type EventRef, TFile } from 'obsidian';
 import { InvertedIndex } from '../index/inverted-index.ts';
 import { extractFields, stripFrontmatter, type NoteMeta } from '../index/field-extract.ts';
+import { htmlToText } from '../index/html-extract.ts';
 import { search, excerptWeights, type SearchResult } from '../index/search-core.ts';
 import { makeExcerpt } from '../index/excerpt.ts';
 import { encodeIndex, decodeIndex, SCHEMA_VERSION } from '../index/serialize.ts';
@@ -27,6 +28,7 @@ export interface QueryOptions {
   pathFilters?: string[];
   tagFilters?: string[];
   minMtime?: number;
+  bodyFuzzy?: 'off' | 'on-sparse' | 'always';
 }
 
 /** Max markdown chars fed to the preview renderer (avoids rendering huge notes). */
@@ -117,6 +119,29 @@ export class SearchService {
         if (file instanceof TFile && file.extension === 'md') this.onChanged(file.path);
       }),
     );
+    // HTML has no metadata cache, so it needs raw vault create/modify events.
+    registerEvent(
+      vault.on('create', (file) => {
+        if (
+          file instanceof TFile &&
+          file.extension.toLowerCase() === 'html' &&
+          this.settings.indexHtml
+        ) {
+          this.onChanged(file.path);
+        }
+      }),
+    );
+    registerEvent(
+      vault.on('modify', (file) => {
+        if (
+          file instanceof TFile &&
+          file.extension.toLowerCase() === 'html' &&
+          this.settings.indexHtml
+        ) {
+          this.onChanged(file.path);
+        }
+      }),
+    );
     registerEvent(
       vault.on('delete', (file) => {
         if (file instanceof TFile) this.onDeleted(file.path);
@@ -125,7 +150,10 @@ export class SearchService {
     registerEvent(
       vault.on('rename', (file, oldPath) => {
         this.onDeleted(oldPath);
-        if (file instanceof TFile && file.extension === 'md') this.onChanged(file.path);
+        if (file instanceof TFile) {
+          const ext = file.extension.toLowerCase();
+          if (ext === 'md' || (ext === 'html' && this.settings.indexHtml)) this.onChanged(file.path);
+        }
       }),
     );
 
@@ -166,21 +194,25 @@ export class SearchService {
   private async buildInitial(): Promise<void> {
     await this.loadCache();
 
-    const files = this.app.vault.getMarkdownFiles();
-    const present = new Set(files.map((f) => f.path));
+    const mdFiles = this.app.vault.getMarkdownFiles();
+    const htmlFiles = this.settings.indexHtml
+      ? this.app.vault.getFiles().filter((f) => f.extension.toLowerCase() === 'html')
+      : [];
+    const allFiles = [...mdFiles, ...htmlFiles];
+    const present = new Set(allFiles.map((f) => f.path));
     for (const path of this.index.livePaths()) {
       if (!present.has(path)) this.index.tombstone(path);
     }
 
-    const queue = files.filter((f) => {
+    const queue = allFiles.filter((f) => {
       const id = this.index.getIdByPath(f.path);
       const d = id !== undefined ? this.index.docEntry(id) : undefined;
       return !d || d.mtime !== f.stat.mtime || d.size !== f.stat.size;
     });
     queue.sort((a, b) => b.stat.mtime - a.stat.mtime); // recently modified first
 
-    this.total = files.length;
-    this.indexed = files.length - queue.length;
+    this.total = allFiles.length;
+    this.indexed = allFiles.length - queue.length;
     this.emitProgress();
 
     // Read files with bounded concurrency. This keeps wall-clock low when reads
@@ -194,7 +226,8 @@ export class SearchService {
       while (cursor < queue.length) {
         const file = queue[cursor++]!;
         try {
-          await this.indexFile(file);
+          if (file.extension.toLowerCase() === 'html') await this.indexHtmlFile(file);
+          else await this.indexFile(file);
         } catch (e) {
           console.warn('Sonar: failed to index', file.path, e);
         }
@@ -227,8 +260,13 @@ export class SearchService {
 
   private async reindexPath(path: string): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(path);
-    if (file instanceof TFile && file.extension === 'md') {
+    if (!(file instanceof TFile)) return;
+    const ext = file.extension.toLowerCase();
+    if (ext === 'md') {
       await this.indexFile(file);
+      this.scheduleSave();
+    } else if (ext === 'html' && this.settings.indexHtml) {
+      await this.indexHtmlFile(file);
       this.scheduleSave();
     }
   }
@@ -254,6 +292,29 @@ export class SearchService {
     });
   }
 
+  /** Read, extract, and index a single HTML file's text as docType 'html'. */
+  private async indexHtmlFile(file: TFile): Promise<void> {
+    let raw = '';
+    try {
+      raw = await withTimeout(this.app.vault.cachedRead(file), READ_TIMEOUT_MS);
+    } catch {
+      return;
+    }
+    const { title, text } = htmlToText(raw);
+    const basename = title ?? file.basename;
+    const { fields, tags } = extractFields({ basename, content: text, meta: {} });
+    if (this.index.getIdByPath(file.path) !== undefined) this.index.tombstone(file.path);
+    this.index.addDocument({
+      path: file.path,
+      basename: file.basename, // display name stays the filename
+      mtime: file.stat.mtime,
+      size: file.stat.size,
+      docType: 'html',
+      tags,
+      fields,
+    });
+  }
+
   /** Run a search and attach an excerpt to each hit (reads live file text). */
   async query(raw: string, opts: QueryOptions): Promise<KeywordHit[]> {
     const results = search(this.index, raw, {
@@ -263,6 +324,7 @@ export class SearchService {
       pathFilters: opts.pathFilters,
       tagFilters: opts.tagFilters,
       minMtime: opts.minMtime,
+      bodyFuzzy: this.settings.bodyFuzzy,
     });
     const hits: KeywordHit[] = [];
     for (const r of results) {
@@ -329,6 +391,13 @@ export class SearchService {
         return undefined;
       }
     }
+    if (file.extension.toLowerCase() === 'html') {
+      try {
+        return htmlToText(await this.app.vault.cachedRead(file)).text.slice(0, PREVIEW_CHARS);
+      } catch {
+        return undefined;
+      }
+    }
     return this.extractor?.cachedText(path)?.slice(0, PREVIEW_CHARS);
   }
 
@@ -340,6 +409,15 @@ export class SearchService {
         try {
           // Strip the YAML block so excerpts show prose, not frontmatter.
           text = stripFrontmatter(await this.app.vault.cachedRead(file));
+        } catch {
+          text = undefined;
+        }
+      }
+    } else if (r.docType === 'html') {
+      const file = this.app.vault.getAbstractFileByPath(r.path);
+      if (file instanceof TFile) {
+        try {
+          text = htmlToText(await this.app.vault.cachedRead(file)).text;
         } catch {
           text = undefined;
         }

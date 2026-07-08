@@ -9,11 +9,14 @@ Omnisearch is good, but its always-on fuzziness pollutes results and its ranking
 ## Features
 
 - **BM25F field-weighted ranking** — basename ≫ aliases > headings > tags > body, with document-length normalization. A single title hit beats heavy body repetition.
-- **Exact › prefix › fuzzy tiering** — exact matches always rank first; the last token you type is matched as a prefix (as-you-type); fuzzy (edit distance 1–2) only fires when results are sparse, so typos are caught without noise.
+- **Exact › prefix › fuzzy tiering** — exact matches always rank first; the last token you type is matched as a prefix (as-you-type); fuzzy (edit distance 1–2) catches typos in note bodies.
+- **Configurable body fuzzy** — choose when body fuzzy fires: `off`, `on when sparse` (default — only when strong matches are few), or `always`.
+- **Universal file finder** — find *any* file in the vault by name, regardless of type: PDFs, images, `.canvas`, `.base`, HTML, archives, media. A subsequence matcher (fzf-style: `srvc` → `search-service`) ranks names, and each result shows a per-type icon. Non-text files you could never search before are now one query away.
 - **Phrase & proximity** — `"quoted phrases"` get an adjacency boost; terms appearing near each other rank higher.
 - **Operators** — `path:`, `tag:`, `-exclude`, `"exact phrase"`.
 - **Diacritics folding** — `perche` matches `perché`. Mixed Italian/English, no stemming (prefix matching covers morphology).
 - **Recency boost** — recently modified notes get a gentle lift.
+- **HTML content** — `.html` files are parsed natively (no plugin) and their text is indexed and searchable — great for generated artifacts. Toggle with **Index HTML content**.
 - **Attachments** — indexes text from PDFs and images via the [Text Extractor](https://github.com/scambier/obsidian-text-extractor) plugin, when installed.
 - **Omnisearch-compatible HTTP API** — optional `GET /search?q=` on `localhost:51361`, same JSON shape, so existing tooling (scripts, `recall.sh`) keeps working.
 - **Fast** — cold index build well under 3s on a 7k-note vault, warm boot from a binary cache in ~200ms, per-keystroke queries in single-digit milliseconds.

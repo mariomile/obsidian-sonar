@@ -39,6 +39,21 @@ export class SonarSettingTab extends PluginSettingTab {
         }),
       );
 
+    new Setting(containerEl)
+      .setName('Body fuzzy matching')
+      .setDesc('When typo-tolerant fuzzy runs over note bodies. "On when sparse" is the default.')
+      .addDropdown((d) =>
+        d
+          .addOption('off', 'Off')
+          .addOption('on-sparse', 'On when sparse')
+          .addOption('always', 'Always')
+          .setValue(s.bodyFuzzy)
+          .onChange(async (v) => {
+            s.bodyFuzzy = v as 'off' | 'on-sparse' | 'always';
+            await this.plugin.saveSettings();
+          }),
+      );
+
     new Setting(containerEl).setName('Attachments').setHeading();
 
     new Setting(containerEl)
@@ -57,6 +72,16 @@ export class SonarSettingTab extends PluginSettingTab {
       .addToggle((t) =>
         t.setValue(s.indexImages).onChange(async (v) => {
           s.indexImages = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName('Index HTML content')
+      .setDesc('Search inside .html files (e.g. generated artifacts). Rebuild the index after changing.')
+      .addToggle((t) =>
+        t.setValue(s.indexHtml).onChange(async (v) => {
+          s.indexHtml = v;
           await this.plugin.saveSettings();
         }),
       );

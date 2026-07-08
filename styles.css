@@ -106,7 +106,7 @@
   font-size: var(--font-ui-large);
   color: var(--text-normal);
   padding: 0;
-  padding-right: 24px; /* room for the inline clear button */
+  padding-right: 52px; /* room for the inline "Clear" button */
 }
 .sonar-modal .sonar-input:focus {
   box-shadow: none;
@@ -116,20 +116,21 @@
   color: var(--text-faint);
 }
 
-/* Inline clear (×) — only visible while there's a query. */
+/* Inline "Clear" text button — only visible while there's a query. No permanent
+ * surface: just the label, muted, with a subtle hover. */
 .sonar-input-clear {
   position: absolute;
   right: 0;
   display: none;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
+  height: 22px;
+  padding: 0 var(--size-4-2);
   border: none;
-  border-radius: 50%;
-  background: var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: transparent;
   color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
   cursor: pointer;
   box-shadow: none;
   transition: background-color var(--sonar-ease), color var(--sonar-ease);
@@ -138,12 +139,8 @@
   display: flex;
 }
 .sonar-input-clear:hover {
-  background: var(--background-modifier-border-hover);
+  background: var(--background-modifier-hover);
   color: var(--text-normal);
-}
-.sonar-input-clear .sonar-icon-btn__glyph svg {
-  width: 12px;
-  height: 12px;
 }
 
 /* Dedicated close button, top-right of the header. */

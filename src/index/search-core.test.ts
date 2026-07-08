@@ -49,6 +49,16 @@ describe('search — relevance tiers', () => {
     expect(paths(index, 'cat')).toEqual(['exact.md', 'prefix.md', 'fuzzy.md']);
   });
 
+  it('bodyFuzzy "off" suppresses the typo fallback that "on-sparse" allows', () => {
+    const index = buildIndex([{ path: 'gravity.md', content: 'gravity framework' }]);
+    const off = search(index, 'graviti', { now: NOW, bodyFuzzy: 'off' });
+    expect(off).toHaveLength(0);
+    const sparse = search(index, 'graviti', { now: NOW, bodyFuzzy: 'on-sparse' });
+    expect(sparse.map((r) => r.path)).toEqual(['gravity.md']);
+    const always = search(index, 'graviti', { now: NOW, bodyFuzzy: 'always' });
+    expect(always.map((r) => r.path)).toEqual(['gravity.md']);
+  });
+
   it('does not invoke fuzzy when there are already enough strong results', () => {
     const notes: NoteSpec[] = [];
     for (let i = 0; i < 6; i++) notes.push({ path: `n${i}.md`, content: 'cat cat' });

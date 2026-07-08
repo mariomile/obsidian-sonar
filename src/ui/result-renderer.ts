@@ -2,22 +2,19 @@ import { setIcon } from 'obsidian';
 import { tokenize } from '../index/tokenizer.ts';
 import type { DocType } from '../index/fields.ts';
 import type { Excerpt, HighlightRange } from '../types.ts';
+import { iconFor } from './icons.ts';
 
 /** The minimal shape a row needs to render — browse items lack score/excerpt. */
 export interface RenderableResult {
   path: string;
   basename: string;
   docType: DocType;
+  /** Raw file extension (lowercase), for icon selection on non-content files. */
+  ext?: string;
   matched: string[];
   score?: number;
   excerpt?: Excerpt;
 }
-
-const ICONS: Record<string, string> = {
-  md: 'file-text',
-  pdf: 'file-type',
-  image: 'image',
-};
 
 /** Append `text` to `parent`, wrapping the given ranges in <mark> spans. */
 export function renderHighlighted(parent: HTMLElement, text: string, ranges: HighlightRange[]): void {
@@ -62,7 +59,7 @@ export function renderResultRow(
   if (opts.selected) row.addClass('is-selected');
 
   const icon = row.createDiv({ cls: 'sonar-result__icon' });
-  setIcon(icon, ICONS[result.docType] ?? 'file-text');
+  setIcon(icon, iconFor(result.ext, result.docType));
 
   const main = row.createDiv({ cls: 'sonar-result__main' });
 

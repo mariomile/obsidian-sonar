@@ -33,6 +33,8 @@ export interface SearchOptions {
   tagFilters?: string[];
   /** Only include docs modified at or after this epoch ms (date chip). */
   minMtime?: number;
+  /** When the body Levenshtein fuzzy tier fires. Default 'on-sparse'. */
+  bodyFuzzy?: 'off' | 'on-sparse' | 'always';
 }
 
 const DEFAULT_LIMIT = 20;
@@ -89,8 +91,12 @@ export function search(index: InvertedIndex, raw: string, opts: SearchOptions): 
     restrictFields,
   });
 
-  // Fuzzy fallback: only when strong matching is sparse.
-  if (scored.length < FUZZY_MIN) {
+  // Fuzzy fallback, gated by mode: off = never; on-sparse = only when results
+  // are sparse (default); always = run every query (fuzzyWeight contains noise).
+  const fuzzyMode = opts.bodyFuzzy ?? 'on-sparse';
+  const wantFuzzy =
+    fuzzyMode === 'always' || (fuzzyMode === 'on-sparse' && scored.length < FUZZY_MIN);
+  if (wantFuzzy) {
     const fuzzyGroups = [...groups];
     for (const t of parsed.terms) {
       const maxDist = t.term.length > 6 ? 2 : 1;
