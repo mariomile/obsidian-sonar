@@ -19,7 +19,7 @@ import type { DocEntry, IndexSnapshot, InvertedIndex, SnapshotTerm } from './inv
  * The doc store rides as small JSON (fast to parse); the large term/postings
  * arrays are raw u32 so there's no million-element JSON.parse on warm boot.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 const MAGIC = 0x534e5231; // 'SNR1'
 const encoder = new TextEncoder();

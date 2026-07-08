@@ -25,4 +25,9 @@ describe('parseSettings', () => {
     expect(s.indexImages).toBe(true);
     expect(s.showScoreDebug).toBe(true);
   });
+
+  it('defaults indexHtml to true and coerces it to boolean', () => {
+    expect(parseSettings({}).indexHtml).toBe(true);
+    expect(parseSettings({ indexHtml: 0 }).indexHtml).toBe(false);
+  });
 });

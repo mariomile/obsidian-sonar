@@ -6,6 +6,8 @@ export interface SonarSettings {
   indexPdf: boolean;
   /** Index OCR text extracted from images via the Text Extractor plugin. */
   indexImages: boolean;
+  /** Index text content of HTML files natively (no plugin). */
+  indexHtml: boolean;
   /** Skip attachments larger than this many megabytes. */
   maxAttachmentMB: number;
   /** Number of results shown in the modal. */
@@ -19,6 +21,7 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   httpPort: 51361,
   indexPdf: true,
   indexImages: false,
+  indexHtml: true,
   maxAttachmentMB: 20,
   maxResults: 20,
   showScoreDebug: false,
@@ -35,6 +38,7 @@ export function parseSettings(data: unknown): SonarSettings {
     httpPort: Number.isInteger(port) && port > 0 && port < 65536 ? port : DEFAULT_SETTINGS.httpPort,
     indexPdf: d.indexPdf ?? DEFAULT_SETTINGS.indexPdf,
     indexImages: d.indexImages ?? DEFAULT_SETTINGS.indexImages,
+    indexHtml: Boolean(d.indexHtml ?? DEFAULT_SETTINGS.indexHtml),
     maxAttachmentMB:
       Number.isFinite(maxAttachmentMB) && maxAttachmentMB > 0
         ? maxAttachmentMB
