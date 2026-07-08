@@ -20,4 +20,18 @@ describe('reciprocalRankFusion', () => {
     const fused = reciprocalRankFusion([[{ path: 'p', tag: 1 }, { path: 'q', tag: 2 }]]);
     expect(fused.map((f) => f.item.path)).toEqual(['p', 'q']);
   });
+
+  it('weights lists: a down-weighted list yields less contribution at equal rank', () => {
+    // Two disjoint single-item lists, both at rank 0. Weighted list wins.
+    const fused = reciprocalRankFusion([[{ path: 'strong' }], [{ path: 'weak' }]], 60, [1, 0.5]);
+    expect(fused[0]!.item.path).toBe('strong');
+    expect(fused[0]!.score).toBeGreaterThan(fused[1]!.score);
+  });
+
+  it('missing weights default to 1 (backward compatible)', () => {
+    const listA = [{ path: 'a' }, { path: 'b' }];
+    const withDefault = reciprocalRankFusion([listA]);
+    const withOnes = reciprocalRankFusion([listA], 60, [1]);
+    expect(withDefault.map((f) => f.score)).toEqual(withOnes.map((f) => f.score));
+  });
 });

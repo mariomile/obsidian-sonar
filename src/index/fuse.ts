@@ -8,15 +8,18 @@
 export function reciprocalRankFusion<T extends { path: string }>(
   lists: T[][],
   k = 60,
+  weights?: number[],
 ): Array<{ item: T; score: number }> {
   const scores = new Map<string, number>();
   const items = new Map<string, T>();
   const order: string[] = [];
 
-  for (const list of lists) {
+  for (let li = 0; li < lists.length; li++) {
+    const list = lists[li]!;
+    const weight = weights?.[li] ?? 1;
     for (let rank = 0; rank < list.length; rank++) {
       const item = list[rank]!;
-      const contribution = 1 / (k + rank);
+      const contribution = weight / (k + rank);
       if (!items.has(item.path)) {
         items.set(item.path, item);
         order.push(item.path);
