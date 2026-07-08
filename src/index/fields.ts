@@ -28,4 +28,4 @@ export const FIELD_NAMES = [
   'body',
 ] as const;
 
-export type DocType = 'md' | 'pdf' | 'image';
+export type DocType = 'md' | 'pdf' | 'image' | 'html';

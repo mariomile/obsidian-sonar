@@ -13,6 +13,8 @@ export interface ProviderResult {
   path: string;
   basename: string;
   docType: DocType;
+  /** Raw file extension (lowercase), for icon selection on non-content files. */
+  ext?: string;
   score: number;
   /** Provider id this result came from. */
   source: string;
