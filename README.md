@@ -75,6 +75,10 @@ The ranking engine (`src/index/`) is pure TypeScript with zero Obsidian imports,
 
 The Obsidian layer (`src/service/`, `src/ui/`, `src/main.ts`) owns the index lifecycle, the modal, and the HTTP server. A `SearchProvider` interface lets a future semantic provider ([QMD](https://github.com/tobi/qmd)) register alongside keyword search and fuse in.
 
+## Mobile
+
+**Playable** — `isDesktopOnly: false` in `manifest.json`; `styles.css` has `.is-phone` layout rules and a `max-width: 600px` responsive query, but no `pointer: coarse` media query or 44px/44pt touch targets yet.
+
 ## Development
 
 ```bash
