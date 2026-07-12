@@ -4,6 +4,8 @@ export interface SonarSettings {
   /** Expose the Omnisearch-compatible HTTP search API (desktop only). */
   httpEnabled: boolean;
   httpPort: number;
+  /** SHA-256 of the bearer token; the raw secret is never persisted in the vault. */
+  httpTokenHash: string;
   /** Index text extracted from PDFs via the Text Extractor plugin. */
   indexPdf: boolean;
   /** Index OCR text extracted from images via the Text Extractor plugin. */
@@ -23,6 +25,7 @@ export interface SonarSettings {
 export const DEFAULT_SETTINGS: SonarSettings = {
   httpEnabled: false,
   httpPort: 51361,
+  httpTokenHash: '',
   indexPdf: true,
   indexImages: false,
   indexHtml: true,
@@ -41,6 +44,10 @@ export function parseSettings(data: unknown): SonarSettings {
   return {
     httpEnabled: Boolean(d.httpEnabled),
     httpPort: Number.isInteger(port) && port > 0 && port < 65536 ? port : DEFAULT_SETTINGS.httpPort,
+    httpTokenHash:
+      typeof d.httpTokenHash === 'string' && /^[a-f0-9]{64}$/i.test(d.httpTokenHash)
+        ? d.httpTokenHash.toLowerCase()
+        : '',
     indexPdf: d.indexPdf ?? DEFAULT_SETTINGS.indexPdf,
     indexImages: d.indexImages ?? DEFAULT_SETTINGS.indexImages,
     indexHtml: Boolean(d.indexHtml ?? DEFAULT_SETTINGS.indexHtml),

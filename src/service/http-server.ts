@@ -6,6 +6,12 @@ interface HttpModule {
   createServer(handler: (req: IncomingMessage, res: ServerResponse) => void): Server;
 }
 
+interface CryptoModule {
+  createHash(algorithm: string): { update(value: string): { digest(encoding: 'hex'): string } };
+  randomBytes(size: number): { toString(encoding: 'base64url'): string };
+  timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean;
+}
+
 const JSON_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
   'Cache-Control': 'no-store',
@@ -15,6 +21,28 @@ const JSON_HEADERS = {
 export function isAllowedLoopbackHost(host: string | undefined, port: number): boolean {
   const normalized = host?.trim().toLowerCase();
   return normalized === `127.0.0.1:${port}` || normalized === `localhost:${port}`;
+}
+
+function cryptoModule(): CryptoModule {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('node:crypto') as CryptoModule;
+}
+
+export function hashBearerToken(token: string): string {
+  return cryptoModule().createHash('sha256').update(token).digest('hex');
+}
+
+export function createBearerToken(): { token: string; hash: string } {
+  const token = cryptoModule().randomBytes(24).toString('base64url');
+  return { token, hash: hashBearerToken(token) };
+}
+
+export function hasValidBearer(authorization: string | undefined, expectedHash: string): boolean {
+  const match = /^Bearer\s+(.+)$/i.exec(authorization?.trim() ?? '');
+  if (!match?.[1] || !expectedHash) return false;
+  const actual = Buffer.from(hashBearerToken(match[1]), 'hex');
+  const expected = Buffer.from(expectedHash, 'hex');
+  return actual.length === expected.length && cryptoModule().timingSafeEqual(actual, expected);
 }
 
 export type HttpStatus =
@@ -37,6 +65,7 @@ export class HttpServer {
   constructor(
     private readonly service: SearchService,
     private readonly port: number,
+    private readonly tokenHash: string,
   ) {}
 
   get status(): HttpStatus {
@@ -93,6 +122,10 @@ export class HttpServer {
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (!isAllowedLoopbackHost(req.headers.host, this.port)) {
       return this.json(res, 403, { error: 'forbidden host' });
+    }
+    if (!hasValidBearer(req.headers.authorization, this.tokenHash)) {
+      res.setHeader('WWW-Authenticate', 'Bearer');
+      return this.json(res, 401, { error: 'unauthorized' });
     }
     if (req.method !== 'GET') {
       res.setHeader('Allow', 'GET');

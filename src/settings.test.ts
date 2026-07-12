@@ -26,6 +26,12 @@ describe('parseSettings', () => {
     expect(s.showScoreDebug).toBe(true);
   });
 
+  it('keeps only a valid SHA-256 HTTP token hash', () => {
+    const hash = 'a'.repeat(64);
+    expect(parseSettings({ httpTokenHash: hash }).httpTokenHash).toBe(hash);
+    expect(parseSettings({ httpTokenHash: 'raw-secret' }).httpTokenHash).toBe('');
+  });
+
   it('defaults indexHtml to true and coerces it to boolean', () => {
     expect(parseSettings({}).indexHtml).toBe(true);
     expect(parseSettings({ indexHtml: 0 }).indexHtml).toBe(false);

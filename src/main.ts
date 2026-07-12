@@ -7,7 +7,7 @@ import { KeywordProvider } from './service/keyword-provider.ts';
 import { FileCatalog } from './service/file-catalog.ts';
 import { FileFinderProvider } from './service/file-finder-provider.ts';
 import { FrecencyTracker } from './service/frecency.ts';
-import { HttpServer } from './service/http-server.ts';
+import { createBearerToken, HttpServer } from './service/http-server.ts';
 import { SonarSettingTab } from './settings-tab.ts';
 import { SonarModal } from './ui/modal.ts';
 
@@ -106,10 +106,23 @@ export default class SonarPlugin extends Plugin {
   refreshHttp(): void {
     this.httpServer?.stop();
     this.httpServer = null;
-    if (Platform.isDesktopApp && this.settings.httpEnabled) {
-      this.httpServer = new HttpServer(this.service, this.settings.httpPort);
+    if (Platform.isDesktopApp && this.settings.httpEnabled && this.settings.httpTokenHash) {
+      this.httpServer = new HttpServer(
+        this.service,
+        this.settings.httpPort,
+        this.settings.httpTokenHash,
+      );
       this.httpServer.start();
     }
+  }
+
+  /** Rotate the API credential, persisting only its SHA-256 hash. */
+  async rotateHttpToken(): Promise<string> {
+    const { token, hash } = createBearerToken();
+    this.settings.httpTokenHash = hash;
+    await this.saveSettings();
+    this.refreshHttp();
+    return token;
   }
 
   httpStatusText(): { text: string; error: boolean } | null {
@@ -121,6 +134,9 @@ export default class SonarPlugin extends Plugin {
       case 'error':
         return { text: status.message, error: true };
       default:
+        if (this.settings.httpEnabled && !this.settings.httpTokenHash) {
+          return { text: 'Generate an access token before the HTTP API can start.', error: true };
+        }
         return this.settings.httpEnabled ? { text: 'Starting…', error: false } : null;
     }
   }
