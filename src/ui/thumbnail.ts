@@ -9,6 +9,22 @@ import { iconFor } from './icons.ts';
 const PREVIEW_CHARS = 400;
 
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'avif', 'svg']);
+const IMG_EMBED = /\.(png|jpe?g|webp|gif|svg|avif|bmp)/i;
+
+/**
+ * Strip the parts of a note that make a mini-render slow or pointless before it
+ * goes to MarkdownRenderer: fenced code blocks — which include dataview/tasks/
+ * query blocks that would otherwise run *other plugins'* post-processors inside
+ * every thumbnail — and note transclusions, which recursively render a whole
+ * second note. Image embeds are kept: they're cheap and give the preview its
+ * visual anchor (banners, avatars).
+ */
+function sanitizeForThumb(md: string): string {
+  return md
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/~~~[\s\S]*?~~~/g, '')
+    .replace(/!\[\[([^\]]+)\]\]/g, (match, inner: string) => (IMG_EMBED.test(inner) ? match : ''));
+}
 
 /** The minimal shape a thumbnail needs from a result row. */
 export interface ThumbItem {
@@ -76,6 +92,10 @@ export class ThumbnailRenderer {
    *  in the real preview once the row scrolls into view. */
   mount(box: HTMLElement, item: ThumbItem): void {
     box.addClass('sonar-thumb');
+    // The mini-render is decorative — a scaled-down copy of note content that
+    // would otherwise be read out (garbled) by screen readers on top of the
+    // row's own title/path. Hide it from the accessibility tree.
+    box.setAttribute('aria-hidden', 'true');
     const fallback = box.createDiv({ cls: 'sonar-thumb__icon' });
     setIcon(fallback, iconFor(item.ext, item.docType));
     this.pending.set(box, item);
@@ -108,7 +128,7 @@ export class ThumbnailRenderer {
       if (!md) return null;
       await MarkdownRenderer.render(
         this.app,
-        md.slice(0, PREVIEW_CHARS),
+        sanitizeForThumb(md).slice(0, PREVIEW_CHARS),
         inner,
         item.path,
         this.component,

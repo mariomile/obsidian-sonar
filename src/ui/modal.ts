@@ -149,7 +149,12 @@ export class SonarModal extends Modal {
     this.previewComponent.load();
     this.modalEl.addClass('sonar-modal');
     this.contentEl.addClass('sonar-modal__content');
-    if (Platform.isPhone || window.innerWidth <= 600) this.modalEl.addClass('is-narrow');
+    const isSheet = Platform.isPhone || window.innerWidth <= 600;
+    if (isSheet) {
+      this.modalEl.addClass('is-narrow');
+      // Grab handle: the visual cue that the sheet is a drag-to-dismiss surface.
+      this.contentEl.createDiv({ cls: 'sonar-sheet-grabber' });
+    }
 
     // Input row: search icon · [input + inline clear] · dedicated close ×.
     const inputRow = this.contentEl.createDiv({ cls: 'sonar-input-row' });
@@ -202,6 +207,56 @@ export class SonarModal extends Modal {
     this.inputEl.addEventListener('keydown', (e) => this.onKeydown(e));
     this.inputEl.focus();
     this.refresh();
+    if (isSheet) this.setupSheetGestures();
+  }
+
+  /** Native-style drag-to-dismiss for the phone / narrow sheet: dragging the
+   *  header (anything outside the scrolling results list) downward past a
+   *  threshold slides the sheet off-screen and closes it; a shorter drag snaps
+   *  back. The results list keeps its own vertical scroll. */
+  private setupSheetGestures(): void {
+    const settle = 'transform 220ms cubic-bezier(0.32, 0.72, 0, 1)';
+    let startY = 0;
+    let dy = 0;
+    let dragging = false;
+
+    const start = (e: TouchEvent): void => {
+      const touch = e.touches[0];
+      if (!touch || e.touches.length !== 1) return;
+      if ((e.target as HTMLElement).closest('.sonar-results')) return; // let the list scroll
+      startY = touch.clientY;
+      dy = 0;
+      dragging = true;
+      this.modalEl.style.animation = 'none';
+      this.modalEl.style.transition = 'none';
+    };
+    const move = (e: TouchEvent): void => {
+      const touch = e.touches[0];
+      if (!dragging || !touch) return;
+      dy = touch.clientY - startY;
+      if (dy <= 0) {
+        this.modalEl.style.transform = '';
+        return;
+      }
+      e.preventDefault();
+      this.modalEl.style.transform = `translateY(${dy}px)`;
+    };
+    const end = (): void => {
+      if (!dragging) return;
+      dragging = false;
+      this.modalEl.style.transition = settle;
+      if (dy > 110) {
+        this.modalEl.style.transform = 'translateY(100%)';
+        window.setTimeout(() => this.close(), 200);
+      } else {
+        this.modalEl.style.transform = '';
+      }
+    };
+
+    this.modalEl.addEventListener('touchstart', start, { passive: true });
+    this.modalEl.addEventListener('touchmove', move, { passive: false });
+    this.modalEl.addEventListener('touchend', end);
+    this.modalEl.addEventListener('touchcancel', end);
   }
 
   onClose(): void {
@@ -517,7 +572,8 @@ export class SonarModal extends Modal {
         if (item.create) {
           const row = holder.createDiv({ cls: 'sonar-result sonar-result--create' });
           if (i === this.selected) row.addClass('is-selected');
-          setIcon(row.createDiv({ cls: 'sonar-result__icon' }), 'file-plus');
+          const thumb = row.createDiv({ cls: 'sonar-result__thumb' });
+          setIcon(thumb.createDiv({ cls: 'sonar-thumb__icon' }), 'file-plus');
           row.createDiv({ cls: 'sonar-result__main', text: `Create note: “${item.basename}”` });
           row.addEventListener('click', () => this.activate(i, false));
           continue;
@@ -525,7 +581,8 @@ export class SonarModal extends Modal {
         if (item.exo) {
           const row = holder.createDiv({ cls: 'sonar-result sonar-result--exo' });
           if (i === this.selected) row.addClass('is-selected');
-          setIcon(row.createDiv({ cls: 'sonar-result__icon' }), 'sparkles');
+          const thumb = row.createDiv({ cls: 'sonar-result__thumb' });
+          setIcon(thumb.createDiv({ cls: 'sonar-thumb__icon' }), 'sparkles');
           row.createDiv({ cls: 'sonar-result__main', text: `Search with Exo: “${item.basename}”` });
           row.addEventListener('click', () => this.activate(i, false));
           continue;

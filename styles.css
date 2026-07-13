@@ -293,8 +293,9 @@
   height: var(--sonar-thumb-size);
   border-radius: var(--radius-s);
   overflow: hidden;
-  background: var(--background-primary);
-  border: var(--border-width) solid var(--background-modifier-border);
+  /* No border — on a long list the outline reads as noise. A faint fill is
+   * enough to seat the preview; the rendered content defines its own edges. */
+  background: var(--background-secondary);
 }
 .sonar-thumb__icon {
   position: absolute;
@@ -396,7 +397,7 @@
   align-self: center;
 }
 /* Exo hand-off row: accent the icon so it reads as the AI action. */
-.sonar-result--exo .sonar-result__icon {
+.sonar-result--exo .sonar-thumb__icon {
   color: var(--text-accent);
 }
 
@@ -561,11 +562,36 @@ body.is-phone .modal-container .sonar-modal.sonar-modal.sonar-modal {
 /* Keep the sheet's chrome clear of the notch and home indicator: the modal
  * background runs edge-to-edge, but the top (input) and bottom (footer) rows
  * inset their own content by the device safe-area insets. */
-/* The sheet's top edge already sits just below the notch (its height subtracts
- * the top safe-area inset), so the input needs only comfortable breathing room
- * beneath the rounded top corners — not another safe-area inset. */
+/* Grab handle: hidden on desktop, a centred pill on the sheet. Purely a visual
+ * affordance — the drag-to-dismiss gesture is wired on the whole header. */
+.sonar-sheet-grabber {
+  display: none;
+}
+.is-phone .sonar-sheet-grabber,
+.sonar-modal.is-narrow .sonar-sheet-grabber {
+  display: flex;
+  flex: none;
+  justify-content: center;
+  padding: var(--size-4-2) 0 2px;
+  touch-action: none;
+}
+.is-phone .sonar-sheet-grabber::before,
+.sonar-modal.is-narrow .sonar-sheet-grabber::before {
+  content: '';
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+}
+/* The grabber now carries the top breathing room, so the input row only needs a
+ * small gap beneath it. */
 .is-phone .sonar-input-row {
-  padding-top: var(--size-4-4);
+  padding-top: var(--size-4-2);
+}
+/* Separate the in-input "Clear" from the sheet's close × so they aren't an
+ * accidental double-tap target on a phone. */
+.is-phone .sonar-close {
+  margin-left: var(--size-4-2);
 }
 .is-phone .sonar-footer {
   padding-bottom: calc(var(--size-4-2) + env(safe-area-inset-bottom));
@@ -600,6 +626,15 @@ body.is-phone .modal-container .sonar-modal.sonar-modal.sonar-modal {
 .sonar-modal.is-narrow {
   --sonar-thumb-size: 48px;
   --sonar-thumb-scale: 0.15;
+}
+/* Comfortable tap targets on the phone sheet: the close × and the filter chips
+ * are the primary touch controls and were sized for a mouse (28 / 26px). */
+.is-phone .sonar-icon-btn {
+  width: 40px;
+  height: 40px;
+}
+.is-phone .sonar-chip {
+  height: 36px;
 }
 
 @media (max-width: 600px) {
