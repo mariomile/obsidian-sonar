@@ -3,6 +3,7 @@ import { tokenize } from '../index/tokenizer.ts';
 import type { DocType } from '../index/fields.ts';
 import type { Excerpt, HighlightRange } from '../types.ts';
 import { iconFor } from './icons.ts';
+import type { ThumbnailRenderer } from './thumbnail.ts';
 
 /** The minimal shape a row needs to render — browse items lack score/excerpt. */
 export interface RenderableResult {
@@ -50,6 +51,9 @@ export interface RowOptions {
   showScore: boolean;
   onClick: (modKey: boolean) => void;
   onContext?: (e: MouseEvent) => void;
+  /** When present, the leading icon is replaced by a lazy mini-preview of the
+   *  note; without it the row keeps the plain file-type icon. */
+  thumbnails?: ThumbnailRenderer;
 }
 
 /** Render one search result row and return its element. */
@@ -61,8 +65,13 @@ export function renderResultRow(
   const row = container.createDiv({ cls: 'sonar-result' });
   if (opts.selected) row.addClass('is-selected');
 
-  const icon = row.createDiv({ cls: 'sonar-result__icon' });
-  setIcon(icon, iconFor(result.ext, result.docType));
+  if (opts.thumbnails) {
+    const thumb = row.createDiv({ cls: 'sonar-result__thumb' });
+    opts.thumbnails.mount(thumb, result);
+  } else {
+    const icon = row.createDiv({ cls: 'sonar-result__icon' });
+    setIcon(icon, iconFor(result.ext, result.docType));
+  }
 
   const main = row.createDiv({ cls: 'sonar-result__main' });
 

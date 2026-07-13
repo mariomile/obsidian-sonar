@@ -10,6 +10,10 @@
   --sonar-row-radius: var(--radius-m, 8px);
   --sonar-ease: 80ms ease;
   --sonar-mark: hsla(var(--interactive-accent-hsl, 220 70% 60%), 1);
+  /* Result thumbnail: a note preview is rendered at `size / scale` px wide, then
+   * CSS-scaled down into a `size`-square box. Render width = 40 / 0.125 = 320px. */
+  --sonar-thumb-size: 40px;
+  --sonar-thumb-scale: 0.125;
   width: 880px;
   max-width: 94vw;
   padding: 0;
@@ -253,6 +257,7 @@
 .sonar-result {
   position: relative;
   display: flex;
+  align-items: flex-start;
   gap: var(--size-4-2);
   padding: var(--size-4-2);
   border-radius: var(--sonar-row-radius);
@@ -273,6 +278,63 @@
 .sonar-result__icon svg {
   width: 16px;
   height: 16px;
+}
+
+/* ---- result thumbnail (mini note preview) ----
+ * A `size`-square clipped box. Until the row scrolls into view it shows a
+ * file-type icon; then it's filled with a live markdown render sized at
+ * `size / scale` px and CSS-scaled down, so a whole note opening reads as a
+ * tiny card (text, headings, callouts, embedded images). Purely decorative —
+ * `pointer-events: none` keeps clicks on the row. */
+.sonar-result__thumb {
+  position: relative;
+  flex: none;
+  width: var(--sonar-thumb-size);
+  height: var(--sonar-thumb-size);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+  background: var(--background-primary);
+  border: var(--border-width) solid var(--background-modifier-border);
+}
+.sonar-thumb__icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+}
+.sonar-thumb__icon svg {
+  width: 16px;
+  height: 16px;
+}
+.sonar-thumb__inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(var(--sonar-thumb-size) / var(--sonar-thumb-scale));
+  transform: scale(var(--sonar-thumb-scale));
+  transform-origin: top left;
+  pointer-events: none;
+  overflow: hidden;
+  color: var(--text-normal);
+}
+.sonar-thumb__inner > :first-child {
+  margin-top: 0;
+}
+.sonar-thumb__inner img {
+  max-width: 100%;
+}
+/* Image results: fill the box with the image itself rather than a text render. */
+.sonar-thumb__inner.is-image {
+  width: var(--sonar-thumb-size);
+  height: var(--sonar-thumb-size);
+  transform: none;
+}
+.sonar-thumb__inner.is-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .sonar-result__main {
   min-width: 0;
@@ -433,18 +495,80 @@
  * side preview, so collapse to a single full-screen column of results (tap a
  * row to open it). Gated on Obsidian's own `.is-phone` body class (tablets keep
  * the two-pane view); the width media query is a safety net for narrow windows.
+ *
+ * Obsidian's mobile modal defaults give `.modal` an 8px margin box and a capped
+ * `--dialog-max-height`, so without the `!important` overrides below Sonar
+ * renders as a floating card — side gutters plus a strip at the bottom where the
+ * dimmed page shows through. Those defaults match at equal specificity and load
+ * after us, so `!important` is what wins. Force a true edge-to-edge, full-height
+ * sheet. The search input sits at the very top of the column, so when the
+ * keyboard opens it stays above the fold — the keyboard only covers the lower
+ * results and footer, which is the expected mobile-search behaviour.
  */
 .is-phone .sonar-modal,
 .sonar-modal.is-narrow {
-  width: 100vw;
-  max-width: 100vw;
-  margin-top: 0;
-  border-radius: 0;
+  width: 100vw !important;
+  max-width: 100vw !important;
+  /* Bottom sheet: rises from the screen bottom up to just below the status bar /
+   * notch, leaving that strip as dimmed backdrop so it reads as a sheet. Anchored
+   * to the bottom (container rule below), so any height shortfall shows as an
+   * intended gap at the *top*, never empty space under the footer. */
+  height: 100vh !important;
+  height: calc(100dvh - env(safe-area-inset-top, 0px)) !important;
+  max-height: 100vh !important;
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px)) !important;
+  margin: 0 !important;
+  border-radius: var(--radius-l, 16px) var(--radius-l, 16px) 0 0;
+  animation: sonar-sheet-rise 280ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+/* Slide up from below the fold. iOS-sheet easing: quick start, soft settle. */
+@keyframes sonar-sheet-rise {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .is-phone .sonar-modal,
+  .sonar-modal.is-narrow {
+    animation: none;
+  }
+}
+/* Anchor the sheet to the bottom of the screen so it rises from there; overrides
+ * the Spotlight-style top alignment used on desktop. */
+body.is-phone .modal-container:has(.sonar-modal),
+.modal-container:has(.sonar-modal.is-narrow) {
+  align-items: flex-end;
 }
 .is-phone .sonar-modal__content,
 .sonar-modal.is-narrow .sonar-modal__content {
   height: 100%;
   max-height: none;
+}
+/* Reclaim full width from themes that inset every phone modal as a floating
+ * card. Cosmos/Cupertino ships
+ *   body.input-cupertino.is-phone .modal { width: calc(100vw - 16px) !important }
+ * at specificity (0,4,1); since Sonar's stylesheet loads *before* the theme's, a
+ * mere tie would lose on source order. The tripled `.sonar-modal` is a deliberate
+ * specificity bump to (0,5,1) — not a typo — so the search sheet stays
+ * edge-to-edge regardless of theme. Margin/height are already won above. */
+body.is-phone .modal-container .sonar-modal.sonar-modal.sonar-modal {
+  width: 100vw !important;
+  max-width: 100vw !important;
+}
+/* Keep the sheet's chrome clear of the notch and home indicator: the modal
+ * background runs edge-to-edge, but the top (input) and bottom (footer) rows
+ * inset their own content by the device safe-area insets. */
+/* The sheet's top edge already sits just below the notch (its height subtracts
+ * the top safe-area inset), so the input needs only comfortable breathing room
+ * beneath the rounded top corners — not another safe-area inset. */
+.is-phone .sonar-input-row {
+  padding-top: var(--size-4-4);
+}
+.is-phone .sonar-footer {
+  padding-bottom: calc(var(--size-4-2) + env(safe-area-inset-bottom));
 }
 .is-phone .sonar-preview,
 .sonar-modal.is-narrow .sonar-preview {
@@ -470,6 +594,12 @@
 .is-phone .sonar-result,
 .sonar-modal.is-narrow .sonar-result {
   padding: var(--size-4-3) var(--size-4-2);
+}
+/* Roomier thumbnails on the phone sheet (render width stays 48 / 0.15 = 320). */
+.is-phone .sonar-modal,
+.sonar-modal.is-narrow {
+  --sonar-thumb-size: 48px;
+  --sonar-thumb-scale: 0.15;
 }
 
 @media (max-width: 600px) {

@@ -18,6 +18,7 @@ import type { SearchService } from '../service/search-service.ts';
 import type { FileCatalog } from '../service/file-catalog.ts';
 import { renderResultRow } from './result-renderer.ts';
 import { FilterSuggest } from './filter-suggest.ts';
+import { ThumbnailRenderer } from './thumbnail.ts';
 
 export interface ModalDeps {
   registry: ProviderRegistry;
@@ -130,6 +131,7 @@ export class SonarModal extends Modal {
   private previewGen = 0;
   private renderedPath: string | null = null;
   private readonly previewComponent = new Component();
+  private thumbnails!: ThumbnailRenderer;
 
   constructor(
     app: App,
@@ -182,6 +184,12 @@ export class SonarModal extends Modal {
     const body = this.contentEl.createDiv({ cls: 'sonar-body' });
     this.listEl = body.createDiv({ cls: 'sonar-results' });
     this.previewEl = body.createDiv({ cls: 'sonar-preview' });
+    this.thumbnails = new ThumbnailRenderer(
+      this.app,
+      this.deps.service,
+      this.previewComponent,
+      this.listEl,
+    );
 
     const footer = this.contentEl.createDiv({ cls: 'sonar-footer' });
     footer.createSpan({
@@ -203,6 +211,7 @@ export class SonarModal extends Modal {
     lastFilters.date = this.dateFilter;
     lastFilters.type = this.typeFilter;
     this.cancelQuery?.();
+    this.thumbnails.dispose();
     this.previewComponent.unload();
     this.contentEl.empty();
   }
@@ -496,6 +505,9 @@ export class SonarModal extends Modal {
   // ---- rendering ----
 
   private renderList(): void {
+    // Rows are rebuilt on every keystroke; drop stale observations so discarded
+    // rows don't pin nodes in the thumbnail observer (the cache is preserved).
+    this.thumbnails.resetObservations();
     const holder = createDiv();
     let flatIndex = 0;
     for (const group of this.groups) {
@@ -523,6 +535,7 @@ export class SonarModal extends Modal {
           showScore: this.deps.settings.showScoreDebug,
           onClick: (mod) => this.activate(i, mod),
           onContext: (e) => this.openContextMenu(item, e),
+          thumbnails: this.thumbnails,
         });
       }
     }
