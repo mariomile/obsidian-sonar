@@ -1,7 +1,6 @@
 import {
   type App,
   Component,
-  MarkdownRenderer,
   Menu,
   Modal,
   Notice,
@@ -20,6 +19,7 @@ import { type RecentSortBy, resolveSortTime } from '../service/sort-time.ts';
 import { renderResultRow } from './result-renderer.ts';
 import { FilterSuggest } from './filter-suggest.ts';
 import { ThumbnailRenderer } from './thumbnail.ts';
+import { PreviewRenderer } from './preview.ts';
 import { parseSigil } from './modes/parse.ts';
 import type { Mode, OmniRow } from './modes/types.ts';
 
@@ -168,10 +168,9 @@ export class SonarModal extends Modal {
 
   private cancelQuery: (() => void) | null = null;
   private queryStart = 0;
-  private previewGen = 0;
-  private renderedPath: string | null = null;
   private readonly previewComponent = new Component();
   private thumbnails!: ThumbnailRenderer;
+  private preview!: PreviewRenderer;
 
   constructor(
     app: App,
@@ -235,6 +234,12 @@ export class SonarModal extends Modal {
       this.deps.service,
       this.previewComponent,
       this.listEl,
+    );
+    this.preview = new PreviewRenderer(
+      this.app,
+      this.deps.service,
+      this.previewEl,
+      (path) => this.openPath(path, false),
     );
 
     const footer = this.contentEl.createDiv({ cls: 'sonar-footer' });
@@ -320,6 +325,7 @@ export class SonarModal extends Modal {
     lastFilters.type = this.typeFilter;
     this.cancelQuery?.();
     this.thumbnails.dispose();
+    this.preview.dispose();
     this.previewComponent.unload();
     this.contentEl.empty();
   }
@@ -784,60 +790,7 @@ export class SonarModal extends Modal {
 
   private renderPreview(): void {
     const item = this.rows[this.selected];
-    if (!item || isOmni(item)) {
-      this.previewEl.empty();
-      this.previewEl.addClass('is-empty');
-      this.renderedPath = null;
-      return;
-    }
-    if (item.path === this.renderedPath) return; // already showing this note
-    this.renderedPath = item.path;
-    this.previewEl.removeClass('is-empty');
-    this.previewEl.empty();
-
-    const header = this.previewEl.createDiv({ cls: 'sonar-preview__header' });
-    const heading = header.createDiv({ cls: 'sonar-preview__heading' });
-    heading.createDiv({ cls: 'sonar-preview__title', text: item.basename });
-    const dir = item.path.includes('/') ? item.path.slice(0, item.path.lastIndexOf('/')) : '';
-    if (dir) heading.createDiv({ cls: 'sonar-preview__path', text: dir });
-
-    const open = header.createEl('button', {
-      cls: 'sonar-icon-btn',
-      attr: { 'aria-label': 'Open note' },
-    });
-    setIcon(open.createSpan({ cls: 'sonar-icon-btn__glyph' }), 'external-link');
-    open.addEventListener('click', () => this.openPath(item.path, false));
-
-    const bodyEl = this.previewEl.createDiv({ cls: 'sonar-preview__body' });
-    const gen = ++this.previewGen;
-
-    // HTML artifacts render faithfully in a sandboxed iframe (CSS applies, no
-    // scripts, no style bleed into Obsidian) instead of as extracted text.
-    if ((item.ext ?? extOf(item.path)) === 'html') {
-      void this.deps.service.htmlSource(item.path).then((html) => {
-        if (gen !== this.previewGen) return;
-        bodyEl.empty();
-        if (!html) {
-          bodyEl.createEl('em', { cls: 'sonar-preview__empty', text: 'No preview available.' });
-          return;
-        }
-        const frame = bodyEl.createEl('iframe', { cls: 'sonar-preview__frame' });
-        frame.setAttribute('sandbox', ''); // renders CSS, blocks scripts
-        frame.srcdoc = html;
-      });
-      return;
-    }
-
-    bodyEl.addClass('markdown-rendered');
-    void this.deps.service.previewMarkdown(item.path).then((md) => {
-      if (gen !== this.previewGen) return;
-      bodyEl.empty();
-      if (!md) {
-        bodyEl.createEl('em', { cls: 'sonar-preview__empty', text: 'No preview available.' });
-        return;
-      }
-      void MarkdownRenderer.render(this.app, md, bodyEl, item.path, this.previewComponent);
-    });
+    this.preview.render(item && !isOmni(item) ? item : null);
   }
 
   private scrollSelectedIntoView(): void {
