@@ -43,4 +43,19 @@ describe('parseSettings', () => {
     expect(parseSettings({ bodyFuzzy: 'off' }).bodyFuzzy).toBe('off');
     expect(parseSettings({ bodyFuzzy: 'nonsense' }).bodyFuzzy).toBe('on-sparse');
   });
+
+  it('defaults browseSort to relevance and accepts each valid value', () => {
+    expect(parseSettings({}).browseSort).toBe('relevance');
+    expect(parseSettings({ browseSort: 'relevance' }).browseSort).toBe('relevance');
+    expect(parseSettings({ browseSort: 'created' }).browseSort).toBe('created');
+    expect(parseSettings({ browseSort: 'modified' }).browseSort).toBe('modified');
+    expect(parseSettings({ browseSort: 'viewed' }).browseSort).toBe('viewed');
+  });
+
+  it('falls back browseSort to relevance for a missing or corrupt value', () => {
+    expect(parseSettings({ browseSort: undefined }).browseSort).toBe('relevance');
+    expect(parseSettings({ browseSort: 'nonsense' }).browseSort).toBe('relevance');
+    expect(parseSettings({ browseSort: 123 }).browseSort).toBe('relevance');
+    expect(parseSettings({ browseSort: null }).browseSort).toBe('relevance');
+  });
 });

@@ -1,4 +1,5 @@
 export type BodyFuzzy = 'off' | 'on-sparse' | 'always';
+export type BrowseSort = 'relevance' | 'created' | 'modified' | 'viewed';
 
 export interface SonarSettings {
   /** Expose the Omnisearch-compatible HTTP search API (desktop only). */
@@ -20,6 +21,9 @@ export interface SonarSettings {
   showScoreDebug: boolean;
   /** When body Levenshtein fuzzy fires. */
   bodyFuzzy: BodyFuzzy;
+  /** Sort order for the browse view and typed-search results — the one chip
+   *  value that persists across restarts. */
+  browseSort: BrowseSort;
 }
 
 export const DEFAULT_SETTINGS: SonarSettings = {
@@ -33,7 +37,10 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   maxResults: 20,
   showScoreDebug: false,
   bodyFuzzy: 'on-sparse',
+  browseSort: 'relevance',
 };
+
+const BROWSE_SORT_VALUES = new Set<BrowseSort>(['relevance', 'created', 'modified', 'viewed']);
 
 /** Coerce loaded data into valid settings, filling defaults for missing keys. */
 export function parseSettings(data: unknown): SonarSettings {
@@ -64,5 +71,8 @@ export function parseSettings(data: unknown): SonarSettings {
       d.bodyFuzzy === 'off' || d.bodyFuzzy === 'always'
         ? d.bodyFuzzy
         : DEFAULT_SETTINGS.bodyFuzzy,
+    browseSort: BROWSE_SORT_VALUES.has(d.browseSort as BrowseSort)
+      ? (d.browseSort as BrowseSort)
+      : DEFAULT_SETTINGS.browseSort,
   };
 }

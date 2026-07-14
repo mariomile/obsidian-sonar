@@ -1,11 +1,21 @@
-import type { App, TFile } from 'obsidian';
+import { type App, TFile } from 'obsidian';
 import { subsequenceScore } from '../index/subseq.ts';
+import type { FrecencyTracker } from './frecency.ts';
 
 export interface FileRecord {
   path: string;
   basename: string;
   ext: string;
   mtime: number;
+}
+
+/** Which timestamp `recent()` sorts by. Default 'modified' keeps existing
+ *  call sites' behavior unchanged. */
+export type RecentSortBy = 'created' | 'modified' | 'viewed';
+
+export interface RecentRecord extends FileRecord {
+  /** The timestamp actually used for ordering — whichever `sortBy` picked. */
+  sortTime: number;
 }
 
 export interface FileHit extends FileRecord {
@@ -53,6 +63,10 @@ export function minScoreFor(query: string): number {
 export class FileCatalog {
   private records = new Map<string, FileRecord>();
 
+  /** Wired from main.ts the same way SearchService.frecency is — optional so
+   *  the catalog stays constructible/testable without a tracker. */
+  frecency: FrecencyTracker | null = null;
+
   constructor(private readonly app: App) {}
 
   private toRecord(file: TFile): FileRecord {
@@ -92,14 +106,36 @@ export class FileCatalog {
     });
   }
 
-  /** Most recently modified files (all types), optionally filtered — powers a
-   *  catalog-backed empty-query browse for types the index doesn't hold. */
-  recent(limit: number, predicate?: (rec: FileRecord) => boolean): FileRecord[] {
-    const out: FileRecord[] = [];
-    for (const rec of this.records.values()) {
-      if (!predicate || predicate(rec)) out.push(rec);
+  /** The timestamp `sortBy` resolves to for a record. 'created' does a live
+   *  TFile.stat.ctime lookup; 'viewed' reads frecency's last-opened; both
+   *  fall back to mtime when unavailable. */
+  private sortTimeFor(rec: FileRecord, sortBy: RecentSortBy): number {
+    if (sortBy === 'created') {
+      const file = this.app.vault.getAbstractFileByPath(rec.path);
+      return file instanceof TFile ? file.stat.ctime : rec.mtime;
     }
-    out.sort((a, b) => b.mtime - a.mtime);
+    if (sortBy === 'viewed') {
+      return this.frecency?.lastOpened(rec.path) ?? rec.mtime;
+    }
+    return rec.mtime;
+  }
+
+  /** Most recently modified (or created/viewed) files (all types), optionally
+   *  filtered — powers a catalog-backed empty-query browse for types the
+   *  index doesn't hold. Sort key computed for every record before slicing
+   *  to `limit`. */
+  recent(
+    limit: number,
+    predicate?: (rec: FileRecord) => boolean,
+    sortBy: RecentSortBy = 'modified',
+  ): RecentRecord[] {
+    const out: RecentRecord[] = [];
+    for (const rec of this.records.values()) {
+      if (!predicate || predicate(rec)) {
+        out.push({ ...rec, sortTime: this.sortTimeFor(rec, sortBy) });
+      }
+    }
+    out.sort((a, b) => b.sortTime - a.sortTime);
     return out.slice(0, limit);
   }
 }

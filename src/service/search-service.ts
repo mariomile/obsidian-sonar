@@ -16,6 +16,16 @@ export interface KeywordHit extends SearchResult {
   excerpt?: Excerpt;
 }
 
+/** Which timestamp `recent()` sorts/groups by. Default 'modified' keeps
+ *  existing call sites' behavior unchanged. */
+export type RecentSortBy = 'created' | 'modified' | 'viewed';
+
+export interface RecentResult extends SearchResult {
+  /** The timestamp actually used for ordering — whichever `sortBy` picked —
+   *  so callers can group/sort consistently without re-deriving the metric. */
+  sortTime: number;
+}
+
 export interface IndexStatus {
   ready: boolean;
   indexed: number;
@@ -348,11 +358,30 @@ export class SearchService {
     return hits;
   }
 
-  /** Most recently modified live docs (for the empty-query browse view). */
+  /** The timestamp `sortBy` resolves to for a live entry. 'created' does a
+   *  live TFile.stat.ctime lookup (not persisted in the index — no
+   *  serialization format change); 'viewed' reads frecency's last-opened;
+   *  both fall back to mtime when unavailable. */
+  private sortTimeFor(path: string, mtime: number, sortBy: RecentSortBy): number {
+    if (sortBy === 'created') {
+      const file = this.app.vault.getAbstractFileByPath(path);
+      return file instanceof TFile ? file.stat.ctime : mtime;
+    }
+    if (sortBy === 'viewed') {
+      return this.frecency?.lastOpened(path) ?? mtime;
+    }
+    return mtime;
+  }
+
+  /** Most recently modified (or created/viewed) live docs, for the
+   *  empty-query browse view. Sort key computed for every live entry before
+   *  slicing to `limit`, so re-sorting by a different field never silently
+   *  excludes entries that belong in the new ordering. */
   recent(
     limit: number,
     filters?: { pathFilters?: string[]; tagFilters?: string[]; minMtime?: number },
-  ): SearchResult[] {
+    sortBy: RecentSortBy = 'modified',
+  ): RecentResult[] {
     const paths = filters?.pathFilters ?? [];
     const tags = filters?.tagFilters ?? [];
     const minMtime = filters?.minMtime;
@@ -369,8 +398,6 @@ export class SearchService {
         }
         return true;
       })
-      .sort((a, b) => b.entry.mtime - a.entry.mtime)
-      .slice(0, limit)
       .map(({ docId, entry }) => ({
         docId,
         path: entry.path,
@@ -380,7 +407,10 @@ export class SearchService {
         mtime: entry.mtime,
         score: 0,
         matched: [],
-      }));
+        sortTime: this.sortTimeFor(entry.path, entry.mtime, sortBy),
+      }))
+      .sort((a, b) => b.sortTime - a.sortTime)
+      .slice(0, limit);
   }
 
   /** Sorted list of every tag in the index (for the tag filter chip). */

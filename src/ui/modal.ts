@@ -12,7 +12,7 @@ import {
 } from 'obsidian';
 import type { DocType } from '../index/fields.ts';
 import { groupByRecency } from '../index/time-buckets.ts';
-import type { SonarSettings } from '../settings.ts';
+import type { BrowseSort, SonarSettings } from '../settings.ts';
 import type { ProviderRegistry } from '../service/provider-registry.ts';
 import type { SearchService } from '../service/search-service.ts';
 import type { FileCatalog } from '../service/file-catalog.ts';
@@ -28,6 +28,9 @@ export interface ModalDeps {
   fileCatalog: FileCatalog;
   settings: SonarSettings;
   now: () => number;
+  /** Persists `settings` (e.g. after the Sort chip writes `browseSort`) — the
+   *  one piece of modal state that survives a full Obsidian restart. */
+  saveSettings: () => Promise<void>;
   /** Fresh mode instances for this modal session; wired in main.ts (Task 9).
    *  The factory receives the modal's close + askExo callbacks. */
   modes: (ctx: { close: () => void; askExo: (q: string) => void }) => Mode[];
@@ -83,6 +86,15 @@ const TYPE_OPTIONS: TypeOption[] = [
 
 /** Type keys the content index holds; others live only in the file catalog. */
 const INDEXED_TYPE_KEYS = new Set(['note', 'pdf', 'image', 'html']);
+
+type SortKey = BrowseSort;
+
+const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
+  { key: 'relevance', label: 'Relevance' },
+  { key: 'created', label: 'Created' },
+  { key: 'modified', label: 'Modified' },
+  { key: 'viewed', label: 'Viewed' },
+];
 
 /** Lowercase file extension from a path, or '' if none. */
 function extOf(path: string): string {
@@ -149,6 +161,9 @@ export class SonarModal extends Modal {
   private tagFilter: string | null = null;
   private dateFilter: DateFilter | null = null;
   private typeFilter: string | null = null;
+  /** Unlike the filters above, persists across a full Obsidian restart via
+   *  `settings.browseSort` rather than the module-scoped `lastFilters`. */
+  private sortKey: SortKey;
 
   private cancelQuery: (() => void) | null = null;
   private queryStart = 0;
@@ -167,6 +182,7 @@ export class SonarModal extends Modal {
     this.tagFilter = lastFilters.tag;
     this.dateFilter = lastFilters.date;
     this.typeFilter = lastFilters.type;
+    this.sortKey = deps.settings.browseSort;
   }
 
   onOpen(): void {
@@ -344,10 +360,20 @@ export class SonarModal extends Modal {
       (e) => this.pickType(e),
       this.typeFilter !== null ? () => this.setType(null) : undefined,
     );
+    this.makeChip(
+      'arrow-up-down',
+      `Sort: ${this.sortLabel(this.sortKey)}`,
+      this.sortKey !== 'relevance',
+      (e) => this.pickSort(e),
+    );
   }
 
   private typeLabel(key: string): string {
     return TYPE_OPTIONS.find((t) => t.key === key)?.label ?? key;
+  }
+
+  private sortLabel(key: SortKey): string {
+    return SORT_OPTIONS.find((o) => o.key === key)?.label ?? key;
   }
 
   private makeChip(
@@ -432,6 +458,28 @@ export class SonarModal extends Modal {
 
   private setType(value: string | null): void {
     this.typeFilter = value;
+    this.renderChips();
+    this.refresh();
+    this.inputEl.focus();
+  }
+
+  private pickSort(e: MouseEvent): void {
+    const menu = new Menu();
+    for (const opt of SORT_OPTIONS) {
+      menu.addItem((item) =>
+        item
+          .setTitle(opt.label)
+          .setChecked(this.sortKey === opt.key)
+          .onClick(() => this.setSort(opt.key)),
+      );
+    }
+    menu.showAtMouseEvent(e);
+  }
+
+  private setSort(key: SortKey): void {
+    this.sortKey = key;
+    this.deps.settings.browseSort = key;
+    void this.deps.saveSettings();
     this.renderChips();
     this.refresh();
     this.inputEl.focus();
@@ -555,6 +603,12 @@ export class SonarModal extends Modal {
         if (this.typeFilter) {
           files = files.filter((i) => this.passesType(i)).slice(0, this.deps.settings.maxResults);
         }
+        if (this.sortKey !== 'relevance') {
+          const sortBy = this.sortKey;
+          files = [...files].sort(
+            (a, b) => this.sortTimeFor(b.path, sortBy) - this.sortTimeFor(a.path, sortBy),
+          );
+        }
         const items: RowItem[] = [...files];
         if (items.length < 3) {
           const q = this.raw.trim();
@@ -581,6 +635,28 @@ export class SonarModal extends Modal {
     );
   }
 
+  /** 'relevance' has no meaning outside search ranking, so browse falls back
+   *  to 'modified' — the pre-existing default order. */
+  private get resolvedSort(): 'created' | 'modified' | 'viewed' {
+    return this.sortKey === 'relevance' ? 'modified' : this.sortKey;
+  }
+
+  /** Sort timestamp for a typed-search result row. Rows there don't flow
+   *  through `SearchService.recent()` (they come from the fused provider
+   *  results), so this is a small separate live lookup against the vault
+   *  and frecency, mirroring `SearchService.sortTimeFor`. */
+  private sortTimeFor(path: string, sortBy: 'created' | 'modified' | 'viewed'): number {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    const mtime = file instanceof TFile ? file.stat.mtime : 0;
+    if (sortBy === 'created') {
+      return file instanceof TFile ? file.stat.ctime : mtime;
+    }
+    if (sortBy === 'viewed') {
+      return this.deps.service.frecency?.lastOpened(path) ?? mtime;
+    }
+    return mtime;
+  }
+
   private buildBrowse(): void {
     // Catalog-only types (canvas/base/audio/video) aren't in the content index,
     // so browse them from the file catalog instead of recent index docs.
@@ -588,13 +664,17 @@ export class SonarModal extends Modal {
       this.buildCatalogBrowse();
       return;
     }
-    const recent = this.deps.service.recent(BROWSE_LIMIT, {
-      pathFilters: this.pathFilters,
-      tagFilters: this.tagFilters,
-      minMtime: this.dateFilter?.minMtime,
-    });
+    const recent = this.deps.service.recent(
+      BROWSE_LIMIT,
+      {
+        pathFilters: this.pathFilters,
+        tagFilters: this.tagFilters,
+        minMtime: this.dateFilter?.minMtime,
+      },
+      this.resolvedSort,
+    );
     const prevPath = this.selectedPath();
-    this.groups = groupByRecency(recent, (r) => r.mtime, this.deps.now())
+    this.groups = groupByRecency(recent, (r) => r.sortTime, this.deps.now())
       .map((g) => ({
         label: g.label,
         items: g.items
@@ -614,11 +694,13 @@ export class SonarModal extends Modal {
   /** Empty-query browse for catalog-only file types (canvas/base/audio/video). */
   private buildCatalogBrowse(): void {
     const opt = TYPE_OPTIONS.find((t) => t.key === this.typeFilter);
-    const recs = this.deps.fileCatalog.recent(BROWSE_LIMIT, (r) =>
-      opt ? opt.test(r.ext, 'md') : true,
+    const recs = this.deps.fileCatalog.recent(
+      BROWSE_LIMIT,
+      (r) => (opt ? opt.test(r.ext, 'md') : true),
+      this.resolvedSort,
     );
     const prevPath = this.selectedPath();
-    this.groups = groupByRecency(recs, (r) => r.mtime, this.deps.now()).map((g) => ({
+    this.groups = groupByRecency(recs, (r) => r.sortTime, this.deps.now()).map((g) => ({
       label: g.label,
       items: g.items.map((r) => ({
         path: r.path,

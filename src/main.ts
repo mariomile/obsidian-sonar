@@ -48,6 +48,7 @@ export default class SonarPlugin extends Plugin {
     this.registry.register(new KeywordProvider(this.service));
 
     this.fileCatalog = new FileCatalog(this.app);
+    this.fileCatalog.frecency = this.frecency;
     // Register AFTER KeywordProvider so the keyword list is the first list into
     // RRF: when the same path matches by content AND by name, the deduped item
     // kept is the keyword result (which carries the excerpt). Attention point #1.
@@ -118,6 +119,7 @@ export default class SonarPlugin extends Plugin {
       fileCatalog: this.fileCatalog,
       settings: this.settings,
       now: () => Date.now(),
+      saveSettings: () => this.saveSettings(),
       modes: ({ close, askExo }) => [
         new CommandMode(this.catalog, this.frecency, () => Date.now(), close),
         new CaptureMode((text) => appendCapture(this.app, text, Date.now()), close),
