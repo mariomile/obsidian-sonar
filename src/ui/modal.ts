@@ -28,10 +28,9 @@ export interface ModalDeps {
   fileCatalog: FileCatalog;
   settings: SonarSettings;
   now: () => number;
-  /** Fresh mode instances for this modal session; wiring in main.ts (Task 9).
-   *  The factory receives the modal's close + askExo callbacks. Optional so the
-   *  modal still compiles and runs (search-only) before Task 9 supplies it. */
-  modes?: (ctx: { close: () => void; askExo: (q: string) => void }) => Mode[];
+  /** Fresh mode instances for this modal session; wired in main.ts (Task 9).
+   *  The factory receives the modal's close + askExo callbacks. */
+  modes: (ctx: { close: () => void; askExo: (q: string) => void }) => Mode[];
 }
 
 interface RowItem {
@@ -222,8 +221,7 @@ export class SonarModal extends Modal {
 
     // Mode list + the mode pill (inserted as inputRow's first child so it sits
     // left of the search icon and the input) + the empty-state grammar hint.
-    this.modeList =
-      this.deps.modes?.({ close: () => this.close(), askExo: (q) => this.askExo(q) }) ?? [];
+    this.modeList = this.deps.modes({ close: () => this.close(), askExo: (q) => this.askExo(q) });
     this.modeChipEl = createDiv({ cls: 'sonar-mode-chip' });
     inputRow.prepend(this.modeChipEl);
     this.modeChipEl.hide();
