@@ -1,6 +1,9 @@
 # Sonar
 
-A fast, relevance-first search engine for Obsidian — built to rank better than Omnisearch, feel instant, and drop into the same HTTP API.
+A fast, relevance-first **omni-bar** for Obsidian. One ping and the right thing
+surfaces — open a note, run a command, capture a thought, or hand an intent to
+Exo. Search is still the core (a from-scratch BM25F engine that ranks better
+than Omnisearch, with a drop-in HTTP API); it's now one of four modes.
 
 ## Why
 
@@ -20,6 +23,17 @@ Omnisearch is good, but its always-on fuzziness pollutes results and its ranking
 - **Attachments** — indexes text from PDFs and images via the [Text Extractor](https://github.com/scambier/obsidian-text-extractor) plugin, when installed.
 - **Omnisearch-compatible HTTP API** — optional `GET /search?q=` on `localhost:51361`, same JSON shape, so existing tooling (scripts, `recall.sh`) keeps working.
 - **Fast** — cold index build well under 3s on a 7k-note vault, warm boot from a binary cache in ~200ms, per-keystroke queries in single-digit milliseconds.
+
+## Modes
+
+Type a leading sigil to switch mode; backspace on an empty input returns to search.
+
+| Input        | Mode    | Does                                                      |
+|--------------|---------|----------------------------------------------------------|
+| `hello`      | Search  | BM25F search across the vault (the default).             |
+| `> annotate` | Command | Run any Obsidian or suite-plugin command, frecency-ranked.|
+| `+ an idea`  | Capture | Append raw text to today's daily under `## 🌱 Capture`. `[ ]` → a dated task. |
+| `? summarise`| Intent  | Hand the request to Exo, which executes it via Sonar's action tools. |
 
 ## Usage
 

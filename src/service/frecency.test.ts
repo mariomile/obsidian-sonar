@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { frecencyBoost } from './frecency.ts';
+import { frecencyBoost, FrecencyTracker } from './frecency.ts';
 
 const NOW = 1000 * 86_400_000;
 
@@ -26,5 +26,22 @@ describe('frecencyBoost', () => {
     const stale = frecencyBoost({ count: 5, lastOpened: NOW - 120 * 86_400_000 }, NOW);
     expect(fresh).toBeGreaterThan(stale);
     expect(stale).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('FrecencyTracker action frecency', () => {
+  const app = { vault: { adapter: {} } } as never;
+  it('bumpAction raises actionBoost above the neutral 1', () => {
+    const t = new FrecencyTracker(app, undefined);
+    const now = 100 * 86_400_000;
+    expect(t.actionBoost('editor:toggle-bold', now)).toBe(1);
+    for (let i = 0; i < 10; i++) t.bumpAction('editor:toggle-bold', now);
+    expect(t.actionBoost('editor:toggle-bold', now)).toBeGreaterThan(1);
+  });
+  it('keeps action and file namespaces separate', () => {
+    const t = new FrecencyTracker(app, undefined);
+    const now = 100 * 86_400_000;
+    t.bumpAction('foo', now);
+    expect(t.boost('foo', now)).toBe(1); // file 'foo' untouched
   });
 });

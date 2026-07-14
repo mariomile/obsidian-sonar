@@ -19,6 +19,8 @@ import type { FileCatalog } from '../service/file-catalog.ts';
 import { renderResultRow } from './result-renderer.ts';
 import { FilterSuggest } from './filter-suggest.ts';
 import { ThumbnailRenderer } from './thumbnail.ts';
+import { parseSigil } from './modes/parse.ts';
+import type { Mode, OmniRow } from './modes/types.ts';
 
 export interface ModalDeps {
   registry: ProviderRegistry;
@@ -26,6 +28,9 @@ export interface ModalDeps {
   fileCatalog: FileCatalog;
   settings: SonarSettings;
   now: () => number;
+  /** Fresh mode instances for this modal session; wired in main.ts (Task 9).
+   *  The factory receives the modal's close + askExo callbacks. */
+  modes: (ctx: { close: () => void; askExo: (q: string) => void }) => Mode[];
 }
 
 interface RowItem {
@@ -38,6 +43,7 @@ interface RowItem {
   excerpt?: { text: string; ranges: Array<[number, number]> };
   create?: boolean;
   exo?: boolean;
+  omni?: OmniRow;
 }
 
 /** A file-type filter option. `test` runs against a result's derived extension
@@ -119,6 +125,12 @@ export class SonarModal extends Modal {
   private rows: RowItem[] = [];
   private selected = 0;
   private raw = '';
+
+  private modeList: Mode[] = [];
+  private mode: Mode | null = null; // null = search
+  private stripped = '';
+  private modeChipEl: HTMLElement | null = null;
+  private hintEl: HTMLElement | null = null;
 
   private titleOnly = false;
   private folderFilter: string | null = null;
@@ -202,6 +214,17 @@ export class SonarModal extends Modal {
       text: '↑↓ navigate · ↵ open · ⌘↵ new tab · esc close',
     });
     this.statusEl = footer.createSpan({ cls: 'sonar-footer__status' });
+
+    // Grammar hint — shown only in the empty-query browse state.
+    this.hintEl = this.contentEl.createDiv({ cls: 'sonar-mode-hint' });
+    this.hintEl.setText('>  commands   ·   +  capture   ·   ?  ask Exo');
+
+    // Mode list + the mode pill (inserted as inputRow's first child so it sits
+    // left of the search icon and the input) + the empty-state grammar hint.
+    this.modeList = this.deps.modes({ close: () => this.close(), askExo: (q) => this.askExo(q, true) });
+    this.modeChipEl = createDiv({ cls: 'sonar-mode-chip' });
+    inputRow.prepend(this.modeChipEl);
+    this.modeChipEl.hide();
 
     this.inputEl.addEventListener('input', () => this.onInput(this.inputEl.value));
     this.inputEl.addEventListener('keydown', (e) => this.onKeydown(e));
@@ -444,10 +467,45 @@ export class SonarModal extends Modal {
   private onInput(value: string): void {
     this.raw = value;
     this.clearBtn.toggleClass('is-visible', value.length > 0);
+    const { sigil, stripped } = parseSigil(value);
+    const next = sigil === '' ? null : this.modeList.find((m) => m.sigil === sigil) ?? null;
+    this.stripped = stripped;
+    if (next !== this.mode) {
+      this.mode = next;
+      this.applyModeChrome();
+    }
     this.refresh();
   }
 
+  /** Show/hide the mode pill + swap the input placeholder for the active mode. */
+  private applyModeChrome(): void {
+    const chip = this.modeChipEl;
+    if (!chip) return;
+    if (!this.mode) {
+      chip.hide();
+      chip.removeAttribute('data-accent');
+      this.inputEl.placeholder = 'Search your vault…';
+      return;
+    }
+    chip.empty();
+    chip.show();
+    chip.setAttribute('data-accent', this.mode.accent);
+    chip.createSpan({ cls: 'sonar-mode-chip__label', text: this.mode.chipLabel });
+    this.inputEl.placeholder = this.mode.placeholder;
+  }
+
   private refresh(): void {
+    this.hintEl?.toggle(!this.mode && !this.raw.trim());
+    if (this.mode) {
+      this.cancelQuery?.();
+      const active = this.mode;
+      void Promise.resolve(active.rows(this.stripped)).then((rows) => {
+        if (this.mode !== active) return; // mode changed while awaiting
+        this.groups = [{ items: rows.map((o) => this.omniItem(o)) }];
+        this.commitRows();
+      });
+      return;
+    }
     this.cancelQuery?.();
     const raw = this.raw.trim();
     if (!raw) {
@@ -557,6 +615,10 @@ export class SonarModal extends Modal {
     this.updateStatus();
   }
 
+  private omniItem(o: OmniRow): RowItem {
+    return { path: '', basename: o.main, docType: 'md', matched: [], omni: o };
+  }
+
   // ---- rendering ----
 
   private renderList(): void {
@@ -587,6 +649,21 @@ export class SonarModal extends Modal {
           row.addEventListener('click', () => this.activate(i, false));
           continue;
         }
+        if (item.omni) {
+          const o = item.omni;
+          const row = holder.createDiv({ cls: 'sonar-result sonar-result--omni' });
+          if (o.disabled) row.addClass('is-disabled');
+          if (i === this.selected) row.addClass('is-selected');
+          const thumb = row.createDiv({ cls: 'sonar-result__thumb' });
+          if (this.mode) thumb.setAttribute('data-accent', this.mode.accent);
+          setIcon(thumb.createDiv({ cls: 'sonar-thumb__icon' }), o.icon);
+          const main = row.createDiv({ cls: 'sonar-result__main' });
+          main.createDiv({ cls: 'sonar-result__title', text: o.main });
+          if (o.sub) main.createDiv({ cls: 'sonar-result__sub', text: o.sub });
+          if (o.aux) row.createDiv({ cls: 'sonar-result__aux', text: o.aux });
+          if (!o.disabled) row.addEventListener('click', () => this.activate(i, false));
+          continue;
+        }
         renderResultRow(holder, item, {
           selected: i === this.selected,
           showScore: this.deps.settings.showScoreDebug,
@@ -605,7 +682,7 @@ export class SonarModal extends Modal {
 
   private renderPreview(): void {
     const item = this.rows[this.selected];
-    if (!item || item.create || item.exo) {
+    if (!item || item.create || item.exo || item.omni) {
       this.previewEl.empty();
       this.previewEl.addClass('is-empty');
       this.renderedPath = null;
@@ -675,6 +752,10 @@ export class SonarModal extends Modal {
   private activate(index: number, newTab: boolean): void {
     const item = this.rows[index];
     if (!item) return;
+    if (item.omni) {
+      if (!item.omni.disabled) void item.omni.run(newTab);
+      return;
+    }
     if (item.create) {
       void this.createNote(item.basename);
       return;
@@ -696,14 +777,17 @@ export class SonarModal extends Modal {
     return p && typeof p.askExo === 'function' ? p : null;
   }
 
-  /** Hand the query off to a new default-model Exo chat, then dismiss. */
-  private askExo(query: string): void {
+  /** Hand the query off to a new default-model Exo chat, then dismiss.
+   *  `autoSend` controls whether Exo executes the query immediately
+   *  (intent mode = execution) or merely pre-fills it (legacy search
+   *  handoff, where the user may still want to edit before sending). */
+  private askExo(query: string, autoSend = false): void {
     const exo = this.exoPlugin();
     if (!exo) {
       new Notice('Sonar: Exo is not available.');
       return;
     }
-    void exo.askExo(query);
+    void exo.askExo(query, autoSend);
     this.close();
   }
 

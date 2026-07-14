@@ -86,6 +86,16 @@ export class FrecencyTracker {
     return frecencyBoost(this.entries.get(path), now);
   }
 
+  /** Frecency for a runnable action, namespaced so it can't collide with a
+   *  file path. Reuses the same map + persistence as file opens. */
+  bumpAction(id: string, now: number): void {
+    this.record(`cmd:${id}`, now);
+  }
+
+  actionBoost(id: string, now: number): number {
+    return this.boost(`cmd:${id}`, now);
+  }
+
   private scheduleSave(): void {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {

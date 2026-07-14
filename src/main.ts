@@ -10,6 +10,11 @@ import { FrecencyTracker } from './service/frecency.ts';
 import { createBearerToken, HttpServer } from './service/http-server.ts';
 import { SonarSettingTab } from './settings-tab.ts';
 import { SonarModal } from './ui/modal.ts';
+import { ActionCatalog, type SonarActionInfo } from './service/action-catalog.ts';
+import { CommandMode } from './ui/modes/command-mode.ts';
+import { CaptureMode } from './ui/modes/capture-mode.ts';
+import { IntentMode } from './ui/modes/intent-mode.ts';
+import { appendCapture } from './service/capture.ts';
 
 export default class SonarPlugin extends Plugin {
   settings!: SonarSettings;
@@ -18,6 +23,7 @@ export default class SonarPlugin extends Plugin {
   private extractor!: Extractor;
   private fileCatalog!: FileCatalog;
   private frecency!: FrecencyTracker;
+  private catalog!: ActionCatalog;
   private httpServer: HttpServer | null = null;
 
   async onload(): Promise<void> {
@@ -46,6 +52,23 @@ export default class SonarPlugin extends Plugin {
     // RRF: when the same path matches by content AND by name, the deduped item
     // kept is the keyword result (which carries the excerpt). Attention point #1.
     this.registry.register(new FileFinderProvider(this.fileCatalog));
+
+    // `app.commands` isn't in the public typings; cast it locally.
+    const commands = (this.app as unknown as {
+      commands: {
+        listCommands(): Array<{ id: string; name: string }>;
+        executeCommandById(id: string): void;
+      };
+    }).commands;
+    this.catalog = new ActionCatalog(
+      () => commands.listCommands().map((c) => ({ id: c.id, name: c.name })),
+      (id) => {
+        commands.executeCommandById(id);
+      },
+      (id) => this.hotkeyLabel(id),
+    );
+    // Command availability changes when plugins toggle; drop the cache then.
+    this.registerEvent(this.app.workspace.on('layout-change', () => this.catalog.invalidate()));
 
     this.addCommand({
       id: 'open-search',
@@ -95,7 +118,43 @@ export default class SonarPlugin extends Plugin {
       fileCatalog: this.fileCatalog,
       settings: this.settings,
       now: () => Date.now(),
+      modes: ({ close, askExo }) => [
+        new CommandMode(this.catalog, this.frecency, () => Date.now(), close),
+        new CaptureMode((text) => appendCapture(this.app, text, Date.now()), () => Date.now(), close),
+        new IntentMode(() => this.exoAvailable(), (q) => askExo(q)),
+      ],
     }).open();
+  }
+
+  /** First hotkey label for a command id, or undefined. `hotkeyManager` isn't
+   *  in the public typings, so it's cast locally. */
+  private hotkeyLabel(id: string): string | undefined {
+    const hk = (this.app as unknown as {
+      hotkeyManager?: { getHotkeys?: (id: string) => Array<{ modifiers: string[]; key: string }> };
+    }).hotkeyManager?.getHotkeys?.(id)?.[0];
+    if (!hk) return undefined;
+    return [...hk.modifiers, hk.key].join('+');
+  }
+
+  /** Whether the Exo plugin is installed and exposes its cross-plugin API. */
+  private exoAvailable(): boolean {
+    const p = (this.app as unknown as { plugins?: { plugins?: Record<string, { askExo?: unknown }> } })
+      .plugins?.plugins?.['exo'];
+    return typeof p?.askExo === 'function';
+  }
+
+  /** Read-only action catalog for cross-plugin consumers (Exo's tool-surface). */
+  getActions(): SonarActionInfo[] {
+    return this.catalog.info();
+  }
+
+  /** Execute an action by id. Destructive actions are flagged so the caller can
+   *  gate them behind a confirmation. */
+  async runAction(id: string): Promise<{ ok: boolean; destructive: boolean }> {
+    const action = this.catalog.all().find((a) => a.id === id);
+    if (!action) return { ok: false, destructive: false };
+    action.run();
+    return { ok: true, destructive: action.destructive };
   }
 
   async saveSettings(): Promise<void> {
