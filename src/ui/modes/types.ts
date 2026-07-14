@@ -2,7 +2,9 @@ export type ModeSigil = '' | '>' | '+' | '?';
 
 /** A single actionable row produced by a non-search mode. */
 export interface OmniRow {
-  /** Stable key for selection + frecency (command id, or a synthetic key). */
+  /** Stable identity for a row (command id, or a synthetic key). Modes set it
+   *  and tests assert on it; the modal currently keys selection by list index,
+   *  so this is reserved for future stable-across-keystroke selection. */
   key: string;
   /** lucide icon id; the modal applies the per-mode accent to it. */
   icon: string;

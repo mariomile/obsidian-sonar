@@ -4,7 +4,7 @@ import { CaptureMode } from './capture-mode.ts';
 function build() {
   const commit = vi.fn(async () => {});
   const onDone = vi.fn();
-  return { mode: new CaptureMode(commit, () => 0, onDone), commit, onDone };
+  return { mode: new CaptureMode(commit, onDone), commit, onDone };
 }
 
 describe('CaptureMode', () => {
