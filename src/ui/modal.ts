@@ -1,7 +1,6 @@
 import {
   type App,
   Component,
-  MarkdownRenderer,
   Menu,
   Modal,
   Notice,
@@ -12,13 +11,15 @@ import {
 } from 'obsidian';
 import type { DocType } from '../index/fields.ts';
 import { groupByRecency } from '../index/time-buckets.ts';
-import type { SonarSettings } from '../settings.ts';
+import type { BrowseSort, SonarSettings } from '../settings.ts';
 import type { ProviderRegistry } from '../service/provider-registry.ts';
 import type { SearchService } from '../service/search-service.ts';
 import type { FileCatalog } from '../service/file-catalog.ts';
+import { type RecentSortBy, resolveSortTime } from '../service/sort-time.ts';
 import { renderResultRow } from './result-renderer.ts';
 import { FilterSuggest } from './filter-suggest.ts';
 import { ThumbnailRenderer } from './thumbnail.ts';
+import { PreviewRenderer } from './preview.ts';
 import { parseSigil } from './modes/parse.ts';
 import type { Mode, OmniRow } from './modes/types.ts';
 
@@ -28,6 +29,9 @@ export interface ModalDeps {
   fileCatalog: FileCatalog;
   settings: SonarSettings;
   now: () => number;
+  /** Persists `settings` (e.g. after the Sort chip writes `browseSort`) — the
+   *  one piece of modal state that survives a full Obsidian restart. */
+  saveSettings: () => Promise<void>;
   /** Fresh mode instances for this modal session; wired in main.ts (Task 9).
    *  The factory receives the modal's close + askExo callbacks. */
   modes: (ctx: { close: () => void; askExo: (q: string) => void }) => Mode[];
@@ -83,6 +87,15 @@ const TYPE_OPTIONS: TypeOption[] = [
 
 /** Type keys the content index holds; others live only in the file catalog. */
 const INDEXED_TYPE_KEYS = new Set(['note', 'pdf', 'image', 'html']);
+
+type SortKey = BrowseSort;
+
+const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
+  { key: 'relevance', label: 'Relevance' },
+  { key: 'created', label: 'Created' },
+  { key: 'modified', label: 'Modified' },
+  { key: 'viewed', label: 'Viewed' },
+];
 
 /** Lowercase file extension from a path, or '' if none. */
 function extOf(path: string): string {
@@ -149,13 +162,15 @@ export class SonarModal extends Modal {
   private tagFilter: string | null = null;
   private dateFilter: DateFilter | null = null;
   private typeFilter: string | null = null;
+  /** Unlike the filters above, persists across a full Obsidian restart via
+   *  `settings.browseSort` rather than the module-scoped `lastFilters`. */
+  private sortKey: SortKey;
 
   private cancelQuery: (() => void) | null = null;
   private queryStart = 0;
-  private previewGen = 0;
-  private renderedPath: string | null = null;
   private readonly previewComponent = new Component();
   private thumbnails!: ThumbnailRenderer;
+  private preview!: PreviewRenderer;
 
   constructor(
     app: App,
@@ -167,6 +182,7 @@ export class SonarModal extends Modal {
     this.tagFilter = lastFilters.tag;
     this.dateFilter = lastFilters.date;
     this.typeFilter = lastFilters.type;
+    this.sortKey = deps.settings.browseSort;
   }
 
   onOpen(): void {
@@ -219,17 +235,24 @@ export class SonarModal extends Modal {
       this.previewComponent,
       this.listEl,
     );
+    this.preview = new PreviewRenderer(
+      this.app,
+      this.deps.service,
+      this.previewEl,
+      (path) => this.openPath(path, false),
+    );
 
     const footer = this.contentEl.createDiv({ cls: 'sonar-footer' });
     footer.createSpan({
       cls: 'sonar-footer__hints',
-      text: '↑↓ navigate · ↵ open · ⌘↵ new tab · esc close',
+      text: '↑↓ navigate · ↵ open · ⌘↵ new tab · ⇥ ask Exo · esc close',
     });
-    this.statusEl = footer.createSpan({ cls: 'sonar-footer__status' });
-
-    // Grammar hint — shown only in the empty-query browse state.
-    this.hintEl = this.contentEl.createDiv({ cls: 'sonar-mode-hint' });
-    this.hintEl.setText('>  commands   ·   +  capture   ·   ?  ask Exo');
+    // Right slot: shared between the result count (while querying) and the
+    // grammar hint (in the empty-query browse state) — they never co-occur.
+    const meta = footer.createDiv({ cls: 'sonar-footer__meta' });
+    this.statusEl = meta.createSpan({ cls: 'sonar-footer__status' });
+    this.hintEl = meta.createSpan({ cls: 'sonar-mode-hint' });
+    this.hintEl.setText('> commands · + capture · ? ask Exo');
 
     // Mode list + the mode pill (inserted as inputRow's first child so it sits
     // left of the search icon and the input) + the empty-state grammar hint.
@@ -302,6 +325,7 @@ export class SonarModal extends Modal {
     lastFilters.type = this.typeFilter;
     this.cancelQuery?.();
     this.thumbnails.dispose();
+    this.preview.dispose();
     this.previewComponent.unload();
     this.contentEl.empty();
   }
@@ -343,10 +367,20 @@ export class SonarModal extends Modal {
       (e) => this.pickType(e),
       this.typeFilter !== null ? () => this.setType(null) : undefined,
     );
+    this.makeChip(
+      'arrow-up-down',
+      `Sort: ${this.sortLabel(this.sortKey)}`,
+      this.sortKey !== 'relevance',
+      (e) => this.pickSort(e),
+    );
   }
 
   private typeLabel(key: string): string {
     return TYPE_OPTIONS.find((t) => t.key === key)?.label ?? key;
+  }
+
+  private sortLabel(key: SortKey): string {
+    return SORT_OPTIONS.find((o) => o.key === key)?.label ?? key;
   }
 
   private makeChip(
@@ -436,6 +470,28 @@ export class SonarModal extends Modal {
     this.inputEl.focus();
   }
 
+  private pickSort(e: MouseEvent): void {
+    const menu = new Menu();
+    for (const opt of SORT_OPTIONS) {
+      menu.addItem((item) =>
+        item
+          .setTitle(opt.label)
+          .setChecked(this.sortKey === opt.key)
+          .onClick(() => this.setSort(opt.key)),
+      );
+    }
+    menu.showAtMouseEvent(e);
+  }
+
+  private setSort(key: SortKey): void {
+    this.sortKey = key;
+    this.deps.settings.browseSort = key;
+    void this.deps.saveSettings();
+    this.renderChips();
+    this.refresh();
+    this.inputEl.focus();
+  }
+
   /** A file row passes the type filter when none is set or when its
    *  extension/docType matches the chosen type. (Synthetic rows never reach
    *  this — they're appended after filtering.) */
@@ -508,7 +564,9 @@ export class SonarModal extends Modal {
   }
 
   private refresh(): void {
-    this.hintEl?.toggle(!this.mode && !this.raw.trim());
+    // Hide the hint while indexing so it can't share the footer's right slot
+    // with the "Indexing…" status (they'd otherwise both show on empty query).
+    this.hintEl?.toggle(!this.mode && !this.raw.trim() && this.deps.service.getStatus().ready);
     if (this.mode) {
       this.cancelQuery?.();
       const active = this.mode;
@@ -554,6 +612,12 @@ export class SonarModal extends Modal {
         if (this.typeFilter) {
           files = files.filter((i) => this.passesType(i)).slice(0, this.deps.settings.maxResults);
         }
+        if (this.sortKey !== 'relevance') {
+          const sortBy = this.sortKey;
+          files = [...files].sort(
+            (a, b) => this.sortTimeFor(b.path, sortBy) - this.sortTimeFor(a.path, sortBy),
+          );
+        }
         const items: RowItem[] = [...files];
         if (items.length < 3) {
           const q = this.raw.trim();
@@ -580,6 +644,26 @@ export class SonarModal extends Modal {
     );
   }
 
+  /** 'relevance' has no meaning outside search ranking, so browse falls back
+   *  to 'modified' — the pre-existing default order. */
+  private get resolvedSort(): RecentSortBy {
+    return this.sortKey === 'relevance' ? 'modified' : this.sortKey;
+  }
+
+  /** Sort timestamp for a typed-search result row. Rows there don't flow
+   *  through `SearchService.recent()` (they come from the fused provider
+   *  results), so this is a small separate live lookup against the vault
+   *  and frecency, mirroring `SearchService.sortTimeFor`. */
+  private sortTimeFor(path: string, sortBy: RecentSortBy): number {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    const mtime = file instanceof TFile ? file.stat.mtime : 0;
+    return resolveSortTime(sortBy, {
+      mtime,
+      ctime: file instanceof TFile ? file.stat.ctime : mtime,
+      lastOpened: this.deps.service.frecency?.lastOpened(path),
+    });
+  }
+
   private buildBrowse(): void {
     // Catalog-only types (canvas/base/audio/video) aren't in the content index,
     // so browse them from the file catalog instead of recent index docs.
@@ -587,13 +671,17 @@ export class SonarModal extends Modal {
       this.buildCatalogBrowse();
       return;
     }
-    const recent = this.deps.service.recent(BROWSE_LIMIT, {
-      pathFilters: this.pathFilters,
-      tagFilters: this.tagFilters,
-      minMtime: this.dateFilter?.minMtime,
-    });
+    const recent = this.deps.service.recent(
+      BROWSE_LIMIT,
+      {
+        pathFilters: this.pathFilters,
+        tagFilters: this.tagFilters,
+        minMtime: this.dateFilter?.minMtime,
+      },
+      this.resolvedSort,
+    );
     const prevPath = this.selectedPath();
-    this.groups = groupByRecency(recent, (r) => r.mtime, this.deps.now())
+    this.groups = groupByRecency(recent, (r) => r.sortTime, this.deps.now())
       .map((g) => ({
         label: g.label,
         items: g.items
@@ -613,11 +701,13 @@ export class SonarModal extends Modal {
   /** Empty-query browse for catalog-only file types (canvas/base/audio/video). */
   private buildCatalogBrowse(): void {
     const opt = TYPE_OPTIONS.find((t) => t.key === this.typeFilter);
-    const recs = this.deps.fileCatalog.recent(BROWSE_LIMIT, (r) =>
-      opt ? opt.test(r.ext, 'md') : true,
+    const recs = this.deps.fileCatalog.recent(
+      BROWSE_LIMIT,
+      (r) => (opt ? opt.test(r.ext, 'md') : true),
+      this.resolvedSort,
     );
     const prevPath = this.selectedPath();
-    this.groups = groupByRecency(recs, (r) => r.mtime, this.deps.now()).map((g) => ({
+    this.groups = groupByRecency(recs, (r) => r.sortTime, this.deps.now()).map((g) => ({
       label: g.label,
       items: g.items.map((r) => ({
         path: r.path,
@@ -700,41 +790,7 @@ export class SonarModal extends Modal {
 
   private renderPreview(): void {
     const item = this.rows[this.selected];
-    if (!item || isOmni(item)) {
-      this.previewEl.empty();
-      this.previewEl.addClass('is-empty');
-      this.renderedPath = null;
-      return;
-    }
-    if (item.path === this.renderedPath) return; // already showing this note
-    this.renderedPath = item.path;
-    this.previewEl.removeClass('is-empty');
-    this.previewEl.empty();
-
-    const header = this.previewEl.createDiv({ cls: 'sonar-preview__header' });
-    const heading = header.createDiv({ cls: 'sonar-preview__heading' });
-    heading.createDiv({ cls: 'sonar-preview__title', text: item.basename });
-    const dir = item.path.includes('/') ? item.path.slice(0, item.path.lastIndexOf('/')) : '';
-    if (dir) heading.createDiv({ cls: 'sonar-preview__path', text: dir });
-
-    const open = header.createEl('button', {
-      cls: 'sonar-icon-btn',
-      attr: { 'aria-label': 'Open note' },
-    });
-    setIcon(open.createSpan({ cls: 'sonar-icon-btn__glyph' }), 'external-link');
-    open.addEventListener('click', () => this.openPath(item.path, false));
-
-    const bodyEl = this.previewEl.createDiv({ cls: 'sonar-preview__body markdown-rendered' });
-    const gen = ++this.previewGen;
-    void this.deps.service.previewMarkdown(item.path).then((md) => {
-      if (gen !== this.previewGen) return;
-      bodyEl.empty();
-      if (!md) {
-        bodyEl.createEl('em', { cls: 'sonar-preview__empty', text: 'No preview available.' });
-        return;
-      }
-      void MarkdownRenderer.render(this.app, md, bodyEl, item.path, this.previewComponent);
-    });
+    this.preview.render(item && !isOmni(item) ? item : null);
   }
 
   private scrollSelectedIntoView(): void {
@@ -762,9 +818,22 @@ export class SonarModal extends Modal {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       this.activate(this.selected, e.metaKey || e.ctrlKey);
+    } else if (e.key === 'Tab') {
+      // Shortcut: hand whatever's typed to Exo and execute. Empty input drops
+      // into intent mode so the next keystrokes compose the request.
+      e.preventDefault();
+      const q = this.stripped.trim();
+      if (q) this.askExo(q, true);
+      else this.enterMode('?');
     } else if (e.key === 'Escape') {
       this.close();
     }
+  }
+
+  /** Programmatically switch the input into a sigil mode (e.g. Tab → intent). */
+  private enterMode(sigil: '>' | '+' | '?'): void {
+    this.inputEl.value = `${sigil} `;
+    this.onInput(this.inputEl.value);
   }
 
   private activate(index: number, newTab: boolean): void {

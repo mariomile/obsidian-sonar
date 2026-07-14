@@ -237,6 +237,14 @@
   border-radius: var(--sonar-row-radius);
   background: var(--background-secondary);
 }
+/* Sandboxed HTML-artifact preview: fills the pane, white canvas, no chrome. */
+.sonar-preview__frame {
+  width: 100%;
+  height: 60vh;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: var(--color-base-00, #fff);
+}
 .sonar-preview.is-empty {
   background: transparent;
   border-color: transparent;
@@ -488,6 +496,11 @@
 .sonar-footer__status {
   font-variant-numeric: tabular-nums;
 }
+.sonar-footer__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+}
 
 /*
  * ---- phone layout ----
@@ -677,11 +690,10 @@ body.is-phone .modal-container .sonar-modal.sonar-modal.sonar-modal {
 .sonar-mode-chip[data-accent='--sonar-accent-cap'] { color: var(--color-green); }
 .sonar-mode-chip[data-accent='--sonar-accent-int'] { color: var(--color-purple); }
 
+/* Grammar hint — inline in the footer's right slot (no separator, no block). */
 .sonar-mode-hint {
-  padding: var(--size-4-2) var(--size-4-3);
   color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  border-top: 1px solid var(--background-modifier-border);
+  white-space: nowrap;
 }
 
 .sonar-result--omni .sonar-result__sub {

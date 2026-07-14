@@ -86,6 +86,13 @@ export class FrecencyTracker {
     return frecencyBoost(this.entries.get(path), now);
   }
 
+  /** Raw last-opened epoch ms for a path, or undefined with no history —
+   *  used by the "Viewed" sort, which needs the timestamp itself rather
+   *  than the computed boost multiplier. */
+  lastOpened(path: string): number | undefined {
+    return this.entries.get(path)?.lastOpened;
+  }
+
   /** Frecency for a runnable action, namespaced so it can't collide with a
    *  file path. Reuses the same map + persistence as file opens. */
   bumpAction(id: string, now: number): void {

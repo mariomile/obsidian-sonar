@@ -10,10 +10,20 @@ import type { Excerpt } from '../types.ts';
 import type { SonarSettings } from '../settings.ts';
 import type { Extractor } from './extractor.ts';
 import type { FrecencyTracker } from './frecency.ts';
+import { type RecentSortBy, resolveSortTime } from './sort-time.ts';
 import { yieldToEventLoop } from './yield.ts';
+
+export type { RecentSortBy };
 
 export interface KeywordHit extends SearchResult {
   excerpt?: Excerpt;
+}
+
+
+export interface RecentResult extends SearchResult {
+  /** The timestamp actually used for ordering — whichever `sortBy` picked —
+   *  so callers can group/sort consistently without re-deriving the metric. */
+  sortTime: number;
 }
 
 export interface IndexStatus {
@@ -348,11 +358,28 @@ export class SearchService {
     return hits;
   }
 
-  /** Most recently modified live docs (for the empty-query browse view). */
+  /** The timestamp `sortBy` resolves to for a live entry. 'created' does a
+   *  live TFile.stat.ctime lookup (not persisted in the index — no
+   *  serialization format change); 'viewed' reads frecency's last-opened;
+   *  both fall back to mtime when unavailable. */
+  private sortTimeFor(path: string, mtime: number, sortBy: RecentSortBy): number {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    return resolveSortTime(sortBy, {
+      mtime,
+      ctime: file instanceof TFile ? file.stat.ctime : mtime,
+      lastOpened: this.frecency?.lastOpened(path),
+    });
+  }
+
+  /** Most recently modified (or created/viewed) live docs, for the
+   *  empty-query browse view. Sort key computed for every live entry before
+   *  slicing to `limit`, so re-sorting by a different field never silently
+   *  excludes entries that belong in the new ordering. */
   recent(
     limit: number,
     filters?: { pathFilters?: string[]; tagFilters?: string[]; minMtime?: number },
-  ): SearchResult[] {
+    sortBy: RecentSortBy = 'modified',
+  ): RecentResult[] {
     const paths = filters?.pathFilters ?? [];
     const tags = filters?.tagFilters ?? [];
     const minMtime = filters?.minMtime;
@@ -369,8 +396,6 @@ export class SearchService {
         }
         return true;
       })
-      .sort((a, b) => b.entry.mtime - a.entry.mtime)
-      .slice(0, limit)
       .map(({ docId, entry }) => ({
         docId,
         path: entry.path,
@@ -380,7 +405,10 @@ export class SearchService {
         mtime: entry.mtime,
         score: 0,
         matched: [],
-      }));
+        sortTime: this.sortTimeFor(entry.path, entry.mtime, sortBy),
+      }))
+      .sort((a, b) => b.sortTime - a.sortTime)
+      .slice(0, limit);
   }
 
   /** Sorted list of every tag in the index (for the tag filter chip). */
@@ -413,6 +441,18 @@ export class SearchService {
       }
     }
     return this.extractor?.cachedText(path)?.slice(0, PREVIEW_CHARS);
+  }
+
+  /** Raw HTML source of an `.html` file, for faithful (sandboxed) preview
+   *  rendering. Returns undefined for non-HTML or on read failure. */
+  async htmlSource(path: string): Promise<string | undefined> {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile) || file.extension.toLowerCase() !== 'html') return undefined;
+    try {
+      return await this.app.vault.cachedRead(file);
+    } catch {
+      return undefined;
+    }
   }
 
   private async buildExcerpt(r: SearchResult): Promise<Excerpt | undefined> {
