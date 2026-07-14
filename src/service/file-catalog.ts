@@ -1,6 +1,9 @@
 import { type App, TFile } from 'obsidian';
 import { subsequenceScore } from '../index/subseq.ts';
 import type { FrecencyTracker } from './frecency.ts';
+import { type RecentSortBy, resolveSortTime } from './sort-time.ts';
+
+export type { RecentSortBy };
 
 export interface FileRecord {
   path: string;
@@ -8,10 +11,6 @@ export interface FileRecord {
   ext: string;
   mtime: number;
 }
-
-/** Which timestamp `recent()` sorts by. Default 'modified' keeps existing
- *  call sites' behavior unchanged. */
-export type RecentSortBy = 'created' | 'modified' | 'viewed';
 
 export interface RecentRecord extends FileRecord {
   /** The timestamp actually used for ordering — whichever `sortBy` picked. */
@@ -110,14 +109,12 @@ export class FileCatalog {
    *  TFile.stat.ctime lookup; 'viewed' reads frecency's last-opened; both
    *  fall back to mtime when unavailable. */
   private sortTimeFor(rec: FileRecord, sortBy: RecentSortBy): number {
-    if (sortBy === 'created') {
-      const file = this.app.vault.getAbstractFileByPath(rec.path);
-      return file instanceof TFile ? file.stat.ctime : rec.mtime;
-    }
-    if (sortBy === 'viewed') {
-      return this.frecency?.lastOpened(rec.path) ?? rec.mtime;
-    }
-    return rec.mtime;
+    const file = this.app.vault.getAbstractFileByPath(rec.path);
+    return resolveSortTime(sortBy, {
+      mtime: rec.mtime,
+      ctime: file instanceof TFile ? file.stat.ctime : rec.mtime,
+      lastOpened: this.frecency?.lastOpened(rec.path),
+    });
   }
 
   /** Most recently modified (or created/viewed) files (all types), optionally

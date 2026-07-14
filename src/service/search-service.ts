@@ -10,15 +10,15 @@ import type { Excerpt } from '../types.ts';
 import type { SonarSettings } from '../settings.ts';
 import type { Extractor } from './extractor.ts';
 import type { FrecencyTracker } from './frecency.ts';
+import { type RecentSortBy, resolveSortTime } from './sort-time.ts';
 import { yieldToEventLoop } from './yield.ts';
+
+export type { RecentSortBy };
 
 export interface KeywordHit extends SearchResult {
   excerpt?: Excerpt;
 }
 
-/** Which timestamp `recent()` sorts/groups by. Default 'modified' keeps
- *  existing call sites' behavior unchanged. */
-export type RecentSortBy = 'created' | 'modified' | 'viewed';
 
 export interface RecentResult extends SearchResult {
   /** The timestamp actually used for ordering — whichever `sortBy` picked —
@@ -363,14 +363,12 @@ export class SearchService {
    *  serialization format change); 'viewed' reads frecency's last-opened;
    *  both fall back to mtime when unavailable. */
   private sortTimeFor(path: string, mtime: number, sortBy: RecentSortBy): number {
-    if (sortBy === 'created') {
-      const file = this.app.vault.getAbstractFileByPath(path);
-      return file instanceof TFile ? file.stat.ctime : mtime;
-    }
-    if (sortBy === 'viewed') {
-      return this.frecency?.lastOpened(path) ?? mtime;
-    }
-    return mtime;
+    const file = this.app.vault.getAbstractFileByPath(path);
+    return resolveSortTime(sortBy, {
+      mtime,
+      ctime: file instanceof TFile ? file.stat.ctime : mtime,
+      lastOpened: this.frecency?.lastOpened(path),
+    });
   }
 
   /** Most recently modified (or created/viewed) live docs, for the

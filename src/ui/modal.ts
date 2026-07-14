@@ -16,6 +16,7 @@ import type { BrowseSort, SonarSettings } from '../settings.ts';
 import type { ProviderRegistry } from '../service/provider-registry.ts';
 import type { SearchService } from '../service/search-service.ts';
 import type { FileCatalog } from '../service/file-catalog.ts';
+import { type RecentSortBy, resolveSortTime } from '../service/sort-time.ts';
 import { renderResultRow } from './result-renderer.ts';
 import { FilterSuggest } from './filter-suggest.ts';
 import { ThumbnailRenderer } from './thumbnail.ts';
@@ -557,7 +558,9 @@ export class SonarModal extends Modal {
   }
 
   private refresh(): void {
-    this.hintEl?.toggle(!this.mode && !this.raw.trim());
+    // Hide the hint while indexing so it can't share the footer's right slot
+    // with the "Indexing…" status (they'd otherwise both show on empty query).
+    this.hintEl?.toggle(!this.mode && !this.raw.trim() && this.deps.service.getStatus().ready);
     if (this.mode) {
       this.cancelQuery?.();
       const active = this.mode;
@@ -637,7 +640,7 @@ export class SonarModal extends Modal {
 
   /** 'relevance' has no meaning outside search ranking, so browse falls back
    *  to 'modified' — the pre-existing default order. */
-  private get resolvedSort(): 'created' | 'modified' | 'viewed' {
+  private get resolvedSort(): RecentSortBy {
     return this.sortKey === 'relevance' ? 'modified' : this.sortKey;
   }
 
@@ -645,16 +648,14 @@ export class SonarModal extends Modal {
    *  through `SearchService.recent()` (they come from the fused provider
    *  results), so this is a small separate live lookup against the vault
    *  and frecency, mirroring `SearchService.sortTimeFor`. */
-  private sortTimeFor(path: string, sortBy: 'created' | 'modified' | 'viewed'): number {
+  private sortTimeFor(path: string, sortBy: RecentSortBy): number {
     const file = this.app.vault.getAbstractFileByPath(path);
     const mtime = file instanceof TFile ? file.stat.mtime : 0;
-    if (sortBy === 'created') {
-      return file instanceof TFile ? file.stat.ctime : mtime;
-    }
-    if (sortBy === 'viewed') {
-      return this.deps.service.frecency?.lastOpened(path) ?? mtime;
-    }
-    return mtime;
+    return resolveSortTime(sortBy, {
+      mtime,
+      ctime: file instanceof TFile ? file.stat.ctime : mtime,
+      lastOpened: this.deps.service.frecency?.lastOpened(path),
+    });
   }
 
   private buildBrowse(): void {
