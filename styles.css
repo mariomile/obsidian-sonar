@@ -391,13 +391,12 @@
   font-weight: var(--font-semibold);
   padding: 0;
 }
-.sonar-result--create .sonar-result__main,
-.sonar-result--exo .sonar-result__main {
+/* Search-mode affordance rows (Create note / Search with Exo): muted title,
+   accented icon so the hand-off reads as an action. */
+.sonar-result--affordance .sonar-result__title {
   color: var(--text-muted);
-  align-self: center;
 }
-/* Exo hand-off row: accent the icon so it reads as the AI action. */
-.sonar-result--exo .sonar-thumb__icon {
+.sonar-result--affordance .sonar-thumb__icon {
   color: var(--text-accent);
 }
 

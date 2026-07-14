@@ -10,7 +10,6 @@ export class CaptureMode implements Mode {
 
   constructor(
     private readonly commit: (text: string) => Promise<void>,
-    private readonly now: () => number,
     private readonly onDone: () => void,
   ) {}
 

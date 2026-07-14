@@ -33,7 +33,8 @@ export interface ModalDeps {
   modes: (ctx: { close: () => void; askExo: (q: string) => void }) => Mode[];
 }
 
-interface RowItem {
+/** A row backed by a real vault file — opens on Enter, shows a preview. */
+interface FileRow {
   path: string;
   basename: string;
   docType: DocType;
@@ -41,9 +42,20 @@ interface RowItem {
   source?: string;
   matched: string[];
   excerpt?: { text: string; ranges: Array<[number, number]> };
-  create?: boolean;
-  exo?: boolean;
-  omni?: OmniRow;
+}
+
+/** A synthetic, actionable row — a command, capture, intent, or the
+ *  "Create note"/"Search with Exo" affordances. Runs a closure on Enter,
+ *  carries no file and shows no preview. */
+interface OmniRowItem {
+  omni: OmniRow;
+}
+
+type RowItem = FileRow | OmniRowItem;
+
+/** Narrows a row to its synthetic (`omni`) variant. */
+function isOmni(row: RowItem): row is OmniRowItem {
+  return 'omni' in row;
 }
 
 /** A file-type filter option. `test` runs against a result's derived extension
@@ -424,10 +436,11 @@ export class SonarModal extends Modal {
     this.inputEl.focus();
   }
 
-  /** A row passes the type filter when none is set, when it's an action row
-   *  (create/exo), or when its extension/docType matches the chosen type. */
-  private passesType(item: RowItem): boolean {
-    if (!this.typeFilter || item.create || item.exo) return true;
+  /** A file row passes the type filter when none is set or when its
+   *  extension/docType matches the chosen type. (Synthetic rows never reach
+   *  this — they're appended after filtering.) */
+  private passesType(item: FileRow): boolean {
+    if (!this.typeFilter) return true;
     const opt = TYPE_OPTIONS.find((t) => t.key === this.typeFilter);
     if (!opt) return true;
     return opt.test(item.ext ?? extOf(item.path), item.docType);
@@ -513,7 +526,7 @@ export class SonarModal extends Modal {
       return;
     }
     this.queryStart = performance.now();
-    const prevPath = this.rows[this.selected]?.path;
+    const prevPath = this.selectedPath();
     this.cancelQuery = this.deps.registry.query(
       raw,
       {
@@ -529,7 +542,7 @@ export class SonarModal extends Modal {
         minMtime: this.dateFilter?.minMtime,
       },
       (update) => {
-        let items: RowItem[] = update.fused.map((r) => ({
+        let files: FileRow[] = update.fused.map((r) => ({
           path: r.path,
           basename: r.basename,
           docType: r.docType,
@@ -539,15 +552,26 @@ export class SonarModal extends Modal {
           excerpt: r.excerpt,
         }));
         if (this.typeFilter) {
-          items = items.filter((i) => this.passesType(i)).slice(0, this.deps.settings.maxResults);
+          files = files.filter((i) => this.passesType(i)).slice(0, this.deps.settings.maxResults);
         }
+        const items: RowItem[] = [...files];
         if (items.length < 3) {
           const q = this.raw.trim();
-          items.push({ path: '', basename: q, docType: 'md', matched: [], create: true });
+          items.push(this.omniItem({
+            key: '__create',
+            icon: 'file-plus',
+            main: `Create note: “${q}”`,
+            run: () => void this.createNote(q),
+          }));
           // When Exo is installed, offer to hand the query off to a fresh
           // default-model chat instead of the (few) local matches.
           if (this.exoPlugin()) {
-            items.push({ path: '', basename: q, docType: 'md', matched: [], exo: true });
+            items.push(this.omniItem({
+              key: '__exo',
+              icon: 'sparkles',
+              main: `Search with Exo: “${q}”`,
+              run: () => this.askExo(q),
+            }));
           }
         }
         this.groups = [{ items }];
@@ -568,7 +592,7 @@ export class SonarModal extends Modal {
       tagFilters: this.tagFilters,
       minMtime: this.dateFilter?.minMtime,
     });
-    const prevPath = this.rows[this.selected]?.path;
+    const prevPath = this.selectedPath();
     this.groups = groupByRecency(recent, (r) => r.mtime, this.deps.now())
       .map((g) => ({
         label: g.label,
@@ -592,7 +616,7 @@ export class SonarModal extends Modal {
     const recs = this.deps.fileCatalog.recent(BROWSE_LIMIT, (r) =>
       opt ? opt.test(r.ext, 'md') : true,
     );
-    const prevPath = this.rows[this.selected]?.path;
+    const prevPath = this.selectedPath();
     this.groups = groupByRecency(recs, (r) => r.mtime, this.deps.now()).map((g) => ({
       label: g.label,
       items: g.items.map((r) => ({
@@ -608,15 +632,24 @@ export class SonarModal extends Modal {
 
   private commitRows(prevPath?: string): void {
     this.rows = this.groups.flatMap((g) => g.items);
-    const idx = prevPath ? this.rows.findIndex((r) => r.path === prevPath && !r.create) : -1;
+    const idx = prevPath
+      ? this.rows.findIndex((r) => !isOmni(r) && r.path === prevPath)
+      : -1;
     this.selected = idx >= 0 ? idx : 0;
     this.renderList();
     this.renderPreview();
     this.updateStatus();
   }
 
-  private omniItem(o: OmniRow): RowItem {
-    return { path: '', basename: o.main, docType: 'md', matched: [], omni: o };
+  private omniItem(o: OmniRow): OmniRowItem {
+    return { omni: o };
+  }
+
+  /** The path of the currently-selected row, or undefined when it's a
+   *  synthetic (omni) row — used to preserve selection across a refresh. */
+  private selectedPath(): string | undefined {
+    const r = this.rows[this.selected];
+    return r && !isOmni(r) ? r.path : undefined;
   }
 
   // ---- rendering ----
@@ -631,29 +664,14 @@ export class SonarModal extends Modal {
       if (group.label) holder.createDiv({ cls: 'sonar-group', text: group.label });
       for (const item of group.items) {
         const i = flatIndex++;
-        if (item.create) {
-          const row = holder.createDiv({ cls: 'sonar-result sonar-result--create' });
-          if (i === this.selected) row.addClass('is-selected');
-          const thumb = row.createDiv({ cls: 'sonar-result__thumb' });
-          setIcon(thumb.createDiv({ cls: 'sonar-thumb__icon' }), 'file-plus');
-          row.createDiv({ cls: 'sonar-result__main', text: `Create note: “${item.basename}”` });
-          row.addEventListener('click', () => this.activate(i, false));
-          continue;
-        }
-        if (item.exo) {
-          const row = holder.createDiv({ cls: 'sonar-result sonar-result--exo' });
-          if (i === this.selected) row.addClass('is-selected');
-          const thumb = row.createDiv({ cls: 'sonar-result__thumb' });
-          setIcon(thumb.createDiv({ cls: 'sonar-thumb__icon' }), 'sparkles');
-          row.createDiv({ cls: 'sonar-result__main', text: `Search with Exo: “${item.basename}”` });
-          row.addEventListener('click', () => this.activate(i, false));
-          continue;
-        }
-        if (item.omni) {
+        if (isOmni(item)) {
           const o = item.omni;
           const row = holder.createDiv({ cls: 'sonar-result sonar-result--omni' });
           if (o.disabled) row.addClass('is-disabled');
           if (i === this.selected) row.addClass('is-selected');
+          // Search-mode omni rows are the "Create note" / "Search with Exo"
+          // affordances (no active mode) — styled as muted actions.
+          if (!this.mode) row.addClass('sonar-result--affordance');
           const thumb = row.createDiv({ cls: 'sonar-result__thumb' });
           if (this.mode) thumb.setAttribute('data-accent', this.mode.accent);
           setIcon(thumb.createDiv({ cls: 'sonar-thumb__icon' }), o.icon);
@@ -682,7 +700,7 @@ export class SonarModal extends Modal {
 
   private renderPreview(): void {
     const item = this.rows[this.selected];
-    if (!item || item.create || item.exo || item.omni) {
+    if (!item || isOmni(item)) {
       this.previewEl.empty();
       this.previewEl.addClass('is-empty');
       this.renderedPath = null;
@@ -752,16 +770,8 @@ export class SonarModal extends Modal {
   private activate(index: number, newTab: boolean): void {
     const item = this.rows[index];
     if (!item) return;
-    if (item.omni) {
+    if (isOmni(item)) {
       if (!item.omni.disabled) void item.omni.run(newTab);
-      return;
-    }
-    if (item.create) {
-      void this.createNote(item.basename);
-      return;
-    }
-    if (item.exo) {
-      this.askExo(item.basename);
       return;
     }
     this.openPath(item.path, newTab);
@@ -801,7 +811,7 @@ export class SonarModal extends Modal {
 
   /** Right-click actions on a result row. */
   private openContextMenu(item: RowItem, e: MouseEvent): void {
-    if (item.create || item.exo || !item.path) return;
+    if (isOmni(item)) return;
     const file = this.app.vault.getAbstractFileByPath(item.path);
     if (!(file instanceof TFile)) return;
     const open = (leaf: 'tab' | 'split' | false): void => {
@@ -871,7 +881,7 @@ export class SonarModal extends Modal {
       this.statusEl.setText('');
       return;
     }
-    const realCount = this.rows.filter((r) => !r.create).length;
+    const realCount = this.rows.filter((r) => !isOmni(r)).length;
     if (this.deps.settings.showScoreDebug) {
       const ms = (performance.now() - this.queryStart).toFixed(1);
       this.statusEl.setText(`${realCount} results · ${ms} ms`);

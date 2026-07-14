@@ -60,8 +60,13 @@ export class ActionCatalog {
     }));
   }
 
-  run(id: string): void {
-    this.exec(id);
+  /** Execute an action by id. Returns whether it ran and whether it was
+   *  flagged destructive, so callers can gate a confirmation. */
+  run(id: string): { ok: boolean; destructive: boolean } {
+    const action = this.all().find((a) => a.id === id);
+    if (!action) return { ok: false, destructive: false };
+    action.run();
+    return { ok: true, destructive: action.destructive };
   }
 
   /** Subsequence-ranked matches over "title source", best first. */

@@ -30,10 +30,21 @@ describe('ActionCatalog', () => {
     expect(ids).not.toContain('editor:toggle-bold');
   });
 
-  it('run() executes the command by id', () => {
+  it('run() executes the command by id and reports it ran', () => {
     const exec = vi.fn();
-    make(exec).run('editor:toggle-bold');
+    const result = make(exec).run('editor:toggle-bold');
     expect(exec).toHaveBeenCalledWith('editor:toggle-bold');
+    expect(result).toEqual({ ok: true, destructive: false });
+  });
+
+  it('run() reports a destructive action as such', () => {
+    expect(make().run('app:delete-file')).toEqual({ ok: true, destructive: true });
+  });
+
+  it('run() returns ok:false for an unknown id without executing', () => {
+    const exec = vi.fn();
+    expect(make(exec).run('nope:missing')).toEqual({ ok: false, destructive: false });
+    expect(exec).not.toHaveBeenCalled();
   });
 
   it('info() omits the run closure', () => {

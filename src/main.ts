@@ -120,7 +120,7 @@ export default class SonarPlugin extends Plugin {
       now: () => Date.now(),
       modes: ({ close, askExo }) => [
         new CommandMode(this.catalog, this.frecency, () => Date.now(), close),
-        new CaptureMode((text) => appendCapture(this.app, text, Date.now()), () => Date.now(), close),
+        new CaptureMode((text) => appendCapture(this.app, text, Date.now()), close),
         new IntentMode(() => this.exoAvailable(), (q) => askExo(q)),
       ],
     }).open();
@@ -151,10 +151,7 @@ export default class SonarPlugin extends Plugin {
   /** Execute an action by id. Destructive actions are flagged so the caller can
    *  gate them behind a confirmation. */
   async runAction(id: string): Promise<{ ok: boolean; destructive: boolean }> {
-    const action = this.catalog.all().find((a) => a.id === id);
-    if (!action) return { ok: false, destructive: false };
-    action.run();
-    return { ok: true, destructive: action.destructive };
+    return this.catalog.run(id);
   }
 
   async saveSettings(): Promise<void> {
