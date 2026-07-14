@@ -221,7 +221,7 @@ export class SonarModal extends Modal {
 
     // Mode list + the mode pill (inserted as inputRow's first child so it sits
     // left of the search icon and the input) + the empty-state grammar hint.
-    this.modeList = this.deps.modes({ close: () => this.close(), askExo: (q) => this.askExo(q) });
+    this.modeList = this.deps.modes({ close: () => this.close(), askExo: (q) => this.askExo(q, true) });
     this.modeChipEl = createDiv({ cls: 'sonar-mode-chip' });
     inputRow.prepend(this.modeChipEl);
     this.modeChipEl.hide();
@@ -777,14 +777,17 @@ export class SonarModal extends Modal {
     return p && typeof p.askExo === 'function' ? p : null;
   }
 
-  /** Hand the query off to a new default-model Exo chat, then dismiss. */
-  private askExo(query: string): void {
+  /** Hand the query off to a new default-model Exo chat, then dismiss.
+   *  `autoSend` controls whether Exo executes the query immediately
+   *  (intent mode = execution) or merely pre-fills it (legacy search
+   *  handoff, where the user may still want to edit before sending). */
+  private askExo(query: string, autoSend = false): void {
     const exo = this.exoPlugin();
     if (!exo) {
       new Notice('Sonar: Exo is not available.');
       return;
     }
-    void exo.askExo(query);
+    void exo.askExo(query, autoSend);
     this.close();
   }
 
