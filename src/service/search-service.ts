@@ -415,6 +415,18 @@ export class SearchService {
     return this.extractor?.cachedText(path)?.slice(0, PREVIEW_CHARS);
   }
 
+  /** Raw HTML source of an `.html` file, for faithful (sandboxed) preview
+   *  rendering. Returns undefined for non-HTML or on read failure. */
+  async htmlSource(path: string): Promise<string | undefined> {
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile) || file.extension.toLowerCase() !== 'html') return undefined;
+    try {
+      return await this.app.vault.cachedRead(file);
+    } catch {
+      return undefined;
+    }
+  }
+
   private async buildExcerpt(r: SearchResult): Promise<Excerpt | undefined> {
     let text: string | undefined;
     if (r.docType === 'md') {

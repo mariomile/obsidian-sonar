@@ -223,13 +223,14 @@ export class SonarModal extends Modal {
     const footer = this.contentEl.createDiv({ cls: 'sonar-footer' });
     footer.createSpan({
       cls: 'sonar-footer__hints',
-      text: '↑↓ navigate · ↵ open · ⌘↵ new tab · esc close',
+      text: '↑↓ navigate · ↵ open · ⌘↵ new tab · ⇥ ask Exo · esc close',
     });
-    this.statusEl = footer.createSpan({ cls: 'sonar-footer__status' });
-
-    // Grammar hint — shown only in the empty-query browse state.
-    this.hintEl = this.contentEl.createDiv({ cls: 'sonar-mode-hint' });
-    this.hintEl.setText('>  commands   ·   +  capture   ·   ?  ask Exo');
+    // Right slot: shared between the result count (while querying) and the
+    // grammar hint (in the empty-query browse state) — they never co-occur.
+    const meta = footer.createDiv({ cls: 'sonar-footer__meta' });
+    this.statusEl = meta.createSpan({ cls: 'sonar-footer__status' });
+    this.hintEl = meta.createSpan({ cls: 'sonar-mode-hint' });
+    this.hintEl.setText('> commands · + capture · ? ask Exo');
 
     // Mode list + the mode pill (inserted as inputRow's first child so it sits
     // left of the search icon and the input) + the empty-state grammar hint.
@@ -724,8 +725,27 @@ export class SonarModal extends Modal {
     setIcon(open.createSpan({ cls: 'sonar-icon-btn__glyph' }), 'external-link');
     open.addEventListener('click', () => this.openPath(item.path, false));
 
-    const bodyEl = this.previewEl.createDiv({ cls: 'sonar-preview__body markdown-rendered' });
+    const bodyEl = this.previewEl.createDiv({ cls: 'sonar-preview__body' });
     const gen = ++this.previewGen;
+
+    // HTML artifacts render faithfully in a sandboxed iframe (CSS applies, no
+    // scripts, no style bleed into Obsidian) instead of as extracted text.
+    if ((item.ext ?? extOf(item.path)) === 'html') {
+      void this.deps.service.htmlSource(item.path).then((html) => {
+        if (gen !== this.previewGen) return;
+        bodyEl.empty();
+        if (!html) {
+          bodyEl.createEl('em', { cls: 'sonar-preview__empty', text: 'No preview available.' });
+          return;
+        }
+        const frame = bodyEl.createEl('iframe', { cls: 'sonar-preview__frame' });
+        frame.setAttribute('sandbox', ''); // renders CSS, blocks scripts
+        frame.srcdoc = html;
+      });
+      return;
+    }
+
+    bodyEl.addClass('markdown-rendered');
     void this.deps.service.previewMarkdown(item.path).then((md) => {
       if (gen !== this.previewGen) return;
       bodyEl.empty();
@@ -762,9 +782,22 @@ export class SonarModal extends Modal {
     } else if (e.key === 'Enter') {
       e.preventDefault();
       this.activate(this.selected, e.metaKey || e.ctrlKey);
+    } else if (e.key === 'Tab') {
+      // Shortcut: hand whatever's typed to Exo and execute. Empty input drops
+      // into intent mode so the next keystrokes compose the request.
+      e.preventDefault();
+      const q = this.stripped.trim();
+      if (q) this.askExo(q, true);
+      else this.enterMode('?');
     } else if (e.key === 'Escape') {
       this.close();
     }
+  }
+
+  /** Programmatically switch the input into a sigil mode (e.g. Tab → intent). */
+  private enterMode(sigil: '>' | '+' | '?'): void {
+    this.inputEl.value = `${sigil} `;
+    this.onInput(this.inputEl.value);
   }
 
   private activate(index: number, newTab: boolean): void {
