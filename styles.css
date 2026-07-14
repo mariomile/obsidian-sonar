@@ -489,7 +489,6 @@
   align-items: center;
   gap: var(--size-4-2);
   padding: var(--size-4-2) var(--size-4-4);
-  border-top: var(--border-width) solid var(--background-modifier-border);
   font-size: var(--font-ui-smaller);
   color: var(--text-faint);
 }
