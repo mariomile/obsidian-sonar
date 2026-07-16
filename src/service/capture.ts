@@ -13,6 +13,11 @@ export function dailyBasename(now: number): string {
   return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
 }
 
+/** Vault path of the daily note for `now`: `Journal/Daily/DD-MM-YYYY.md`. */
+export function dailyNotePath(now: number): string {
+  return normalizePath(`${DAILY_DIR}/${dailyBasename(now)}.md`);
+}
+
 function isoDate(now: number): string {
   const d = new Date(now);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -52,7 +57,7 @@ export function appendToCaptureSection(content: string, line: string): string {
 /** Resolve today's daily note (creating it if needed) and append a capture line
  *  as RAW TEXT. Never uses processFrontMatter. */
 export async function appendCapture(app: App, text: string, now: number): Promise<void> {
-  const path = normalizePath(`${DAILY_DIR}/${dailyBasename(now)}.md`);
+  const path = dailyNotePath(now);
   const line = formatCaptureLine(text, now);
   const existing = app.vault.getAbstractFileByPath(path);
   if (existing instanceof TFile) {

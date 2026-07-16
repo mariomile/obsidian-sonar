@@ -16,6 +16,8 @@ import type { ProviderRegistry } from '../service/provider-registry.ts';
 import type { SearchService } from '../service/search-service.ts';
 import type { FileCatalog } from '../service/file-catalog.ts';
 import { type RecentSortBy, resolveSortTime } from '../service/sort-time.ts';
+import { matchDateKeyword } from '../service/date-jump.ts';
+import { dailyBasename, dailyNotePath } from '../service/capture.ts';
 import { renderResultRow } from './result-renderer.ts';
 import { FilterSuggest } from './filter-suggest.ts';
 import { ThumbnailRenderer } from './thumbnail.ts';
@@ -619,6 +621,24 @@ export class SonarModal extends Modal {
           );
         }
         const items: RowItem[] = [...files];
+        // "today"/"yesterday"/"tomorrow" (or oggi/ieri/domani) as the whole
+        // query jumps straight to that day's daily note — pinned above
+        // ranked results since it's an unambiguous intent, not a text match.
+        const dateJump = matchDateKeyword(this.raw, this.deps.now());
+        if (dateJump) {
+          const path = dailyNotePath(dateJump.targetMs);
+          const dateLabel = dailyBasename(dateJump.targetMs);
+          const exists = this.app.vault.getAbstractFileByPath(path) instanceof TFile;
+          items.unshift(
+            this.omniItem({
+              key: '__date-jump',
+              icon: exists ? 'calendar' : 'file-plus',
+              main: exists ? `${dateJump.label} — ${dateLabel}` : `Create ${dateJump.label.toLowerCase()}'s note`,
+              sub: exists ? 'Journal/Daily' : `${dateLabel} → Journal/Daily`,
+              run: () => void this.openOrCreateDailyNote(path),
+            }),
+          );
+        }
         if (items.length < 3) {
           const q = this.raw.trim();
           items.push(this.omniItem({
@@ -936,6 +956,22 @@ export class SonarModal extends Modal {
       this.close();
     } catch (e) {
       new Notice(`Sonar: couldn't create note — ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  /** Open the daily note at `path`, creating it empty first if it doesn't exist yet. */
+  private async openOrCreateDailyNote(path: string): Promise<void> {
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    if (existing instanceof TFile) {
+      this.openPath(path, false);
+      return;
+    }
+    try {
+      const file = await this.app.vault.create(path, '');
+      await this.app.workspace.getLeaf(false).openFile(file);
+      this.close();
+    } catch (e) {
+      new Notice(`Sonar: couldn't create daily note — ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
