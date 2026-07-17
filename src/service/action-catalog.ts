@@ -16,7 +16,20 @@ export interface SonarAction {
 
 export type SonarActionInfo = Omit<SonarAction, 'run'>;
 
-const DESTRUCTIVE = /delete|trash|remove|overwrite|clear|reset/i;
+/** Verbs that destroy persistent data regardless of object. */
+const STRONG_VERBS = /\b(delete|trash|erase|wipe|purge|overwrite)\b/i;
+/** Verbs that are destructive only when aimed at persistent data — "clear
+ *  formatting" and "reset zoom" are transient UI state, "clear history" is not. */
+const WEAK_VERBS = /\b(remove|clear|reset|discard)\b/i;
+const DATA_NOUNS = /\b(files?|notes?|folders?|vaults?|attachments?|history|data|database|cache|backups?|all)\b/i;
+
+/** Tiered destructive heuristic over a command's "name + id" text. The old
+ *  single regex over-flagged: any `clear`/`reset`/`remove` counted, so benign
+ *  commands gated a confirmation. */
+export function isDestructive(text: string): boolean {
+  if (STRONG_VERBS.test(text)) return true;
+  return WEAK_VERBS.test(text) && DATA_NOUNS.test(text);
+}
 
 /** Builds the list of runnable actions from the host's command list. Injected
  *  with thin accessors so it needs no Obsidian `App` under test. Populates
@@ -38,7 +51,7 @@ export class ActionCatalog {
         id: c.id,
         title: c.name,
         source,
-        destructive: DESTRUCTIVE.test(c.name) || DESTRUCTIVE.test(c.id),
+        destructive: isDestructive(`${c.name} ${c.id}`),
         describe: `${c.name} (${source})`,
         run: () => this.exec(c.id),
       };

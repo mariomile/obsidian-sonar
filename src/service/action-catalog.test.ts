@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ActionCatalog, type CommandLike } from './action-catalog.ts';
+import { ActionCatalog, isDestructive, type CommandLike } from './action-catalog.ts';
 
 const COMMANDS: CommandLike[] = [
   { id: 'aiditor:annotate-selection', name: 'Annotate selection' },
@@ -22,6 +22,34 @@ describe('ActionCatalog', () => {
     const a = make().all();
     expect(a.find((x) => x.id === 'app:delete-file')?.destructive).toBe(true);
     expect(a.find((x) => x.id === 'editor:toggle-bold')?.destructive).toBe(false);
+  });
+
+  describe('isDestructive', () => {
+    it('always flags strong data-destroying verbs', () => {
+      expect(isDestructive('Delete current file app:delete-file')).toBe(true);
+      expect(isDestructive('Move file to trash app:trash-file')).toBe(true);
+      expect(isDestructive('Wipe workspace x:wipe')).toBe(true);
+      expect(isDestructive('Purge cache x:purge-cache')).toBe(true);
+      expect(isDestructive('Overwrite daily note x:overwrite')).toBe(true);
+    });
+
+    it('flags weak verbs only when paired with a data noun', () => {
+      expect(isDestructive('Clear search history search:clear-history')).toBe(true);
+      expect(isDestructive('Remove all attachments x:remove-attachments')).toBe(true);
+      expect(isDestructive('Reset vault settings x:reset-vault')).toBe(true);
+    });
+
+    it('does not flag weak verbs on transient UI state', () => {
+      expect(isDestructive('Clear formatting editor:clear-formatting')).toBe(false);
+      expect(isDestructive('Reset zoom window:reset-zoom')).toBe(false);
+      expect(isDestructive('Remove active filter x:remove-filter')).toBe(false);
+      expect(isDestructive('Clear selection editor:clear-selection')).toBe(false);
+    });
+
+    it('requires word boundaries, not substrings', () => {
+      expect(isDestructive('Undelete note x:undelete')).toBe(false);
+      expect(isDestructive('Nuclear theme toggle x:nuclear')).toBe(false);
+    });
   });
 
   it('match() returns only subsequence-matching actions', () => {
