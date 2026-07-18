@@ -123,7 +123,7 @@ export default class SonarPlugin extends Plugin {
       modes: ({ close, askExo }) => [
         new CommandMode(this.catalog, this.frecency, () => Date.now(), close),
         new CaptureMode((text) => appendCapture(this.app, text, Date.now()), close),
-        new IntentMode(() => this.exoAvailable(), (q) => askExo(q)),
+        new IntentMode(() => this.exoAvailable(), (q) => askExo(q, 'sonar-intent')),
       ],
     }).open();
   }

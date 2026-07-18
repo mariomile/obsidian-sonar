@@ -36,7 +36,7 @@ export interface ModalDeps {
   saveSettings: () => Promise<void>;
   /** Fresh mode instances for this modal session; wired in main.ts (Task 9).
    *  The factory receives the modal's close + askExo callbacks. */
-  modes: (ctx: { close: () => void; askExo: (q: string) => void }) => Mode[];
+  modes: (ctx: { close: () => void; askExo: (q: string, source?: string) => void }) => Mode[];
 }
 
 /** A row backed by a real vault file — opens on Enter, shows a preview. */
@@ -118,7 +118,7 @@ const lastFilters: {
 
 /** Minimal shape of the Exo plugin's public cross-plugin API. */
 interface ExoApi {
-  askExo(query: string, autoSend?: boolean): Promise<void>;
+  askExo(query: string, autoSend?: boolean, opts?: { source?: string }): Promise<void>;
 }
 
 interface RowGroup {
@@ -258,7 +258,7 @@ export class SonarModal extends Modal {
 
     // Mode list + the mode pill (inserted as inputRow's first child so it sits
     // left of the search icon and the input) + the empty-state grammar hint.
-    this.modeList = this.deps.modes({ close: () => this.close(), askExo: (q) => this.askExo(q, true) });
+    this.modeList = this.deps.modes({ close: () => this.close(), askExo: (q, source) => this.askExo(q, true, source) });
     this.modeChipEl = createDiv({ cls: 'sonar-mode-chip' });
     inputRow.prepend(this.modeChipEl);
     this.modeChipEl.hide();
@@ -843,7 +843,7 @@ export class SonarModal extends Modal {
       // into intent mode so the next keystrokes compose the request.
       e.preventDefault();
       const q = this.stripped.trim();
-      if (q) this.askExo(q, true);
+      if (q) this.askExo(q, true, 'sonar-intent');
       else this.enterMode('?');
     } else if (e.key === 'Escape') {
       this.close();
@@ -880,13 +880,13 @@ export class SonarModal extends Modal {
    *  `autoSend` controls whether Exo executes the query immediately
    *  (intent mode = execution) or merely pre-fills it (legacy search
    *  handoff, where the user may still want to edit before sending). */
-  private askExo(query: string, autoSend = false): void {
+  private askExo(query: string, autoSend = false, source?: string): void {
     const exo = this.exoPlugin();
     if (!exo) {
       new Notice('Sonar: Exo is not available.');
       return;
     }
-    void exo.askExo(query, autoSend);
+    void exo.askExo(query, autoSend, source ? { source } : undefined);
     this.close();
   }
 
