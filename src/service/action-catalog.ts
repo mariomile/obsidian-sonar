@@ -22,11 +22,15 @@ const STRONG_VERBS = /\b(delete|trash|erase|wipe|purge|overwrite)\b/i;
  *  formatting" and "reset zoom" are transient UI state, "clear history" is not. */
 const WEAK_VERBS = /\b(remove|clear|reset|discard)\b/i;
 const DATA_NOUNS = /\b(files?|notes?|folders?|vaults?|attachments?|history|data|database|cache|backups?|all)\b/i;
+/** Commands whose title leads with a view verb only display something —
+ *  "Show trash" opens the trash pane, it doesn't trash anything. */
+const VIEW_VERBS = /^(show|open|view|reveal)\b/i;
 
 /** Tiered destructive heuristic over a command's "name + id" text. The old
  *  single regex over-flagged: any `clear`/`reset`/`remove` counted, so benign
  *  commands gated a confirmation. */
 export function isDestructive(text: string): boolean {
+  if (VIEW_VERBS.test(text)) return false;
   if (STRONG_VERBS.test(text)) return true;
   return WEAK_VERBS.test(text) && DATA_NOUNS.test(text);
 }

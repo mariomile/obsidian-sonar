@@ -50,6 +50,14 @@ describe('ActionCatalog', () => {
       expect(isDestructive('Undelete note x:undelete')).toBe(false);
       expect(isDestructive('Nuclear theme toggle x:nuclear')).toBe(false);
     });
+
+    it('never flags commands that only show/open a view', () => {
+      expect(isDestructive('Show trash workspace:show-trash')).toBe(false);
+      expect(isDestructive('Open trash folder x:open-trash')).toBe(false);
+      expect(isDestructive('Reveal deleted files x:reveal')).toBe(false);
+      // the guard is on the leading verb only — destructive verbs later still count
+      expect(isDestructive('Delete current file app:delete-file')).toBe(true);
+    });
   });
 
   it('match() returns only subsequence-matching actions', () => {
