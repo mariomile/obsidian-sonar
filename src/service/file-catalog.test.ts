@@ -3,7 +3,7 @@ import { searchCatalog, minScoreFor, type FileRecord } from './file-catalog.ts';
 
 const recs: FileRecord[] = [
   { path: 'src/service/search-service.ts', basename: 'search-service', ext: 'ts', mtime: 3 },
-  { path: 'Atlas/People/Mario Miletta.md', basename: 'Mario Miletta', ext: 'md', mtime: 2 },
+  { path: 'Atlas/People/Alice Rivera.md', basename: 'Alice Rivera', ext: 'md', mtime: 2 },
   { path: 'Resources/_artifacts/GTM Gravity.html', basename: 'GTM Gravity', ext: 'html', mtime: 1 },
 ];
 

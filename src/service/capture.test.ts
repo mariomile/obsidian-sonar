@@ -35,8 +35,8 @@ describe('capture helpers', () => {
   });
 
   it('preserves unquoted frontmatter wikilinks untouched', () => {
-    const src = '---\ncompany: [[Captoo]]\n---\n\n## 🌱 Capture\n- a\n';
+    const src = '---\ncompany: [[Acme Corp]]\n---\n\n## 🌱 Capture\n- a\n';
     const out = appendToCaptureSection(src, '- b');
-    expect(out).toContain('company: [[Captoo]]');
+    expect(out).toContain('company: [[Acme Corp]]');
   });
 });
