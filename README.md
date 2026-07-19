@@ -7,6 +7,11 @@ than Omnisearch, with a drop-in HTTP API); it's now one of four modes.
 
 Part of the marioverse Obsidian plugin suite.
 
+<p align="center">
+  <img src="docs/omnibar.png" width="900" alt="Sonar — the omni-bar" />
+</p>
+<p align="center"><em>Search results with a live preview panel, filter chips, and mode hints in the footer.</em></p>
+
 ## Why
 
 Omnisearch is good, but its always-on fuzziness pollutes results and its ranking doesn't let title matches dominate. Sonar is a from-scratch BM25F engine tuned so the note you meant is at the top: title/heading/tag hits outweigh body repetition, prefix matching works as you type, and fuzzy only kicks in when exact matching comes up short.
