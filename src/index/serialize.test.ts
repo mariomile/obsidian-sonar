@@ -45,7 +45,18 @@ describe('serialize — round trip', () => {
 
     expect(restored.docCount).toBe(index.docCount);
     expect(restored.docEntry(0)).toEqual(index.docEntry(0));
-    expect(restored.getPostings('cat')!.postings).toEqual(index.getPostings('cat')!.postings);
+    expect(Array.from(restored.getPostings('cat')!.postings)).toEqual(index.getPostings('cat')!.postings);
+  });
+
+  it('keeps decoded postings as zero-copy typed views until they are mutated', () => {
+    const index = buildIndex();
+    const decoded = decodeIndex(encodeIndex(index, SCHEMA_VERSION, TOKENIZER_VERSION))!;
+    expect(decoded.snapshot.terms[0]!.postings).toBeInstanceOf(Uint32Array);
+
+    const restored = new InvertedIndex();
+    restored.loadSnapshot(decoded.snapshot);
+    restored.addDocument(docFrom('more-cats.md', 'cat'));
+    expect(restored.getPostings('cat')!.df).toBe(4);
   });
 
   it('preserves tombstones across the round trip', () => {

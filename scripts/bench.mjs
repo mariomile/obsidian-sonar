@@ -6,17 +6,23 @@
  * Budgets (fail the process if exceeded):
  *   - cold build  < 3000 ms
  *   - query (avg) <   30 ms
+ *   - cache encode <  500 ms
+ *   - cache decode <  150 ms
  */
 import { performance } from 'node:perf_hooks';
 import { InvertedIndex } from '../src/index/inverted-index.ts';
 import { extractFields } from '../src/index/field-extract.ts';
 import { search } from '../src/index/search-core.ts';
+import { decodeIndex, encodeIndex, SCHEMA_VERSION } from '../src/index/serialize.ts';
+import { TOKENIZER_VERSION } from '../src/index/tokenizer.ts';
 
 const DOC_COUNT = 7200;
 const TOKENS_PER_DOC = 250;
 const VOCAB_SIZE = 4000;
 const BUILD_BUDGET_MS = 3000;
 const QUERY_BUDGET_MS = 30;
+const ENCODE_BUDGET_MS = 500;
+const DECODE_BUDGET_MS = 150;
 
 // Deterministic PRNG so runs are comparable.
 let seed = 123456789;
@@ -79,10 +85,24 @@ const RUNS = 5;
 for (let r = 0; r < RUNS; r++) for (const q of queries) search(index, q, { now });
 const queryMs = (performance.now() - queryStart) / (RUNS * queries.length);
 
+// ---- Warm-cache round trip ----
+const encodeStart = performance.now();
+const cache = encodeIndex(index, SCHEMA_VERSION, TOKENIZER_VERSION);
+const encodeMs = performance.now() - encodeStart;
+const decodeStart = performance.now();
+const decoded = decodeIndex(cache);
+if (!decoded) throw new Error('cache decode failed');
+const restored = new InvertedIndex();
+restored.loadSnapshot(decoded.snapshot);
+const decodeMs = performance.now() - decodeStart;
+
 console.log(`docs indexed:   ${index.docCount}`);
 console.log(`unique terms:   ${index.allTerms.length}`);
 console.log(`cold build:     ${buildMs.toFixed(0)} ms  (budget ${BUILD_BUDGET_MS} ms)`);
 console.log(`query avg:      ${queryMs.toFixed(2)} ms  (budget ${QUERY_BUDGET_MS} ms)`);
+console.log(`cache size:     ${(cache.byteLength / 1024 / 1024).toFixed(1)} MiB`);
+console.log(`cache encode:   ${encodeMs.toFixed(1)} ms  (budget ${ENCODE_BUDGET_MS} ms)`);
+console.log(`cache decode:   ${decodeMs.toFixed(1)} ms  (budget ${DECODE_BUDGET_MS} ms)`);
 
 let failed = false;
 if (buildMs > BUILD_BUDGET_MS) {
@@ -91,6 +111,14 @@ if (buildMs > BUILD_BUDGET_MS) {
 }
 if (queryMs > QUERY_BUDGET_MS) {
   console.error(`FAIL: query avg ${queryMs.toFixed(2)}ms exceeds ${QUERY_BUDGET_MS}ms`);
+  failed = true;
+}
+if (encodeMs > ENCODE_BUDGET_MS) {
+  console.error(`FAIL: cache encode ${encodeMs.toFixed(1)}ms exceeds ${ENCODE_BUDGET_MS}ms`);
+  failed = true;
+}
+if (decodeMs > DECODE_BUDGET_MS) {
+  console.error(`FAIL: cache decode ${decodeMs.toFixed(1)}ms exceeds ${DECODE_BUDGET_MS}ms`);
   failed = true;
 }
 if (failed) process.exit(1);

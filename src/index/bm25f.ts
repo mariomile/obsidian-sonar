@@ -1,5 +1,5 @@
 import { BODY_FIELD, FIELD_COUNT } from './fields.ts';
-import type { InvertedIndex } from './inverted-index.ts';
+import { copyPostingRange, type InvertedIndex } from './inverted-index.ts';
 
 /**
  * All ranking constants in one place. Relative order is locked by tests; tune
@@ -167,7 +167,7 @@ export function rank(input: RankInput): ScoredDoc[] {
         let positions: number[] = [];
         if (fieldMask & BODY_BIT) {
           const posCount = p[i++]!;
-          positions = p.slice(i, i + posCount);
+          positions = copyPostingRange(p, i, i + posCount);
           i += posCount;
         }
 

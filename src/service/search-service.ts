@@ -99,6 +99,9 @@ export class SearchService {
   private readonly debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly pending = new Map<string, 'change' | 'delete'>();
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private cacheDirty = false;
+  private saveInFlight: Promise<void> | null = null;
+  private disposed = false;
   private readonly progressListeners = new Set<(status: IndexStatus) => void>();
 
   extractor: Extractor | null = null;
@@ -192,8 +195,10 @@ export class SearchService {
       this.pending.set(path, 'delete');
       return;
     }
-    this.index.tombstone(path);
-    this.scheduleSave();
+    if (this.index.getIdByPath(path) !== undefined) {
+      this.index.tombstone(path);
+      this.scheduleSave();
+    }
   }
 
   private debounce(path: string, fn: () => void): void {
@@ -217,8 +222,12 @@ export class SearchService {
       : [];
     const allFiles = [...mdFiles, ...htmlFiles];
     const present = new Set(allFiles.map((f) => f.path));
+    let removedCachedDocument = false;
     for (const path of this.index.livePaths()) {
-      if (!present.has(path)) this.index.tombstone(path);
+      if (!present.has(path)) {
+        this.index.tombstone(path);
+        removedCachedDocument = true;
+      }
     }
 
     const queue = allFiles.filter((f) => {
@@ -261,10 +270,11 @@ export class SearchService {
 
     this.ready = true;
     this.emitProgress();
+    const hadPendingChanges = this.pending.size > 0;
     await this.flushPending();
 
     if (this.extractor) void this.extractor.run();
-    this.scheduleSave();
+    if (queue.length > 0 || removedCachedDocument || hadPendingChanges) this.scheduleSave();
   }
 
   private async flushPending(): Promise<void> {
@@ -508,6 +518,12 @@ export class SearchService {
   }
 
   scheduleSave(): void {
+    this.cacheDirty = true;
+    this.armSaveTimer();
+  }
+
+  private armSaveTimer(): void {
+    if (this.disposed) return;
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
@@ -515,15 +531,31 @@ export class SearchService {
     }, SAVE_DEBOUNCE_MS);
   }
 
-  private async saveCache(): Promise<void> {
+  private saveCache(): Promise<void> {
     const path = this.cachePath();
-    if (!path) return;
+    if (!path || !this.cacheDirty) return Promise.resolve();
+    if (this.saveInFlight) return this.saveInFlight;
+
+    const run = this.writeCache(path).finally(() => {
+      this.saveInFlight = null;
+      // A mutation can land while adapter.writeBinary is awaiting I/O.
+      if (this.cacheDirty) this.armSaveTimer();
+    });
+    this.saveInFlight = run;
+    return run;
+  }
+
+  private async writeCache(path: string): Promise<void> {
+    // Clear before the first await. A concurrent mutation flips it back to true
+    // and is therefore guaranteed a subsequent save.
+    this.cacheDirty = false;
     try {
       const threshold = Math.max(COMPACT_MIN, this.index.docCount * 0.2);
       if (this.index.tombstoneCount > threshold) this.index.compact();
       const buf = encodeIndex(this.index, SCHEMA_VERSION, TOKENIZER_VERSION);
       await this.app.vault.adapter.writeBinary(path, buf);
     } catch (e) {
+      this.cacheDirty = true;
       console.warn('Sonar: failed to save index cache', e);
     }
   }
@@ -537,9 +569,12 @@ export class SearchService {
   }
 
   dispose(): void {
+    this.disposed = true;
     for (const t of this.debounceTimers.values()) clearTimeout(t);
     this.debounceTimers.clear();
     if (this.saveTimer) clearTimeout(this.saveTimer);
-    void this.saveCache();
+    this.saveTimer = null;
+    // Reloading an unchanged plugin must not serialize the full index again.
+    if (this.cacheDirty) void this.saveCache();
   }
 }

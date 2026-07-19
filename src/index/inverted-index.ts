@@ -38,8 +38,11 @@ export interface TermEntry {
    *   docId, fieldMask, tf[popcount(fieldMask)] (ascending field), then—
    *   if the BODY bit is set—posCount followed by posCount body positions.
    */
-  postings: number[];
+  postings: PostingList;
 }
+
+/** Fresh terms use mutable arrays; cache-backed terms stay zero-copy until mutated. */
+export type PostingList = number[] | Uint32Array;
 
 export interface DecodedPosting {
   docId: number;
@@ -63,7 +66,7 @@ function popcount(mask: number): number {
 }
 
 /** Decode a term's flat postings into structured rows (used by tests + scoring). */
-export function decodePostings(postings: number[]): DecodedPosting[] {
+export function decodePostings(postings: PostingList): DecodedPosting[] {
   const rows: DecodedPosting[] = [];
   let i = 0;
   const n = postings.length;
@@ -77,12 +80,18 @@ export function decodePostings(postings: number[]): DecodedPosting[] {
     let bodyPositions: number[] = [];
     if (fieldMask & BODY_BIT) {
       const posCount = postings[i++]!;
-      bodyPositions = postings.slice(i, i + posCount);
+      bodyPositions = copyPostingRange(postings, i, i + posCount);
       i += posCount;
     }
     rows.push({ docId, fieldMask, tf, bodyPositions });
   }
   return rows;
+}
+
+export function copyPostingRange(postings: PostingList, from: number, to: number): number[] {
+  const out = new Array<number>(Math.max(0, to - from));
+  for (let i = from; i < to; i++) out[i - from] = postings[i]!;
+  return out;
 }
 
 /** Aggregate a document's field inputs into per-term (mask, tf, positions). */
@@ -203,7 +212,7 @@ export class InvertedIndex {
         this.insertSortedTerm(term);
       }
       entry.df++;
-      const p = entry.postings;
+      const p = this.mutablePostings(entry);
       p.push(docId, a.mask);
       for (let f = 0; f < FIELD_COUNT; f++) {
         if (a.mask & (1 << f)) p.push(a.tf[f]!);
@@ -325,6 +334,14 @@ export class InvertedIndex {
     this.sortedTerms.splice(at, 0, term);
   }
 
+  /** Materialize a cache-backed typed view only when an incremental write needs it. */
+  private mutablePostings(entry: TermEntry): number[] {
+    if (Array.isArray(entry.postings)) return entry.postings;
+    const mutable = Array.from(entry.postings);
+    entry.postings = mutable;
+    return mutable;
+  }
+
   /**
    * Lossless snapshot of the current state (including tombstones) for
    * serialization. Docs keep their current ids; the loader rebuilds all
@@ -332,7 +349,10 @@ export class InvertedIndex {
    */
   snapshot(): IndexSnapshot {
     const terms: SnapshotTerm[] = [];
-    for (const [term, entry] of this.terms) {
+    // Persist the existing sorted dictionary order. Cache restore can then
+    // rebuild prefix-search state in O(terms), without sorting 100k+ strings.
+    for (const term of this.sortedTerms) {
+      const entry = this.terms.get(term)!;
       terms.push({ term, df: entry.df, postings: entry.postings });
     }
     return { docs: this.docs, terms };
@@ -357,15 +377,24 @@ export class InvertedIndex {
       for (let f = 0; f < FIELD_COUNT; f++) this.fieldLengthSums[f]! += d.fieldLengths[f]!;
       this.liveDocCount++;
     }
-    for (const t of snap.terms) this.terms.set(t.term, { df: t.df, postings: t.postings });
-    this.sortedTerms = [...this.terms.keys()].sort();
+    this.sortedTerms = new Array<string>(snap.terms.length);
+    let alreadySorted = true;
+    let previous = '';
+    for (let i = 0; i < snap.terms.length; i++) {
+      const term = snap.terms[i]!;
+      this.terms.set(term.term, { df: term.df, postings: term.postings });
+      this.sortedTerms[i] = term.term;
+      if (i > 0 && term.term < previous) alreadySorted = false;
+      previous = term.term;
+    }
+    if (!alreadySorted) this.sortedTerms.sort();
   }
 }
 
 export interface SnapshotTerm {
   term: string;
   df: number;
-  postings: number[];
+  postings: PostingList;
 }
 
 export interface IndexSnapshot {
