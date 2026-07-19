@@ -5,6 +5,8 @@ surfaces — open a note, run a command, capture a thought, or hand an intent to
 Exo. Search is still the core (a from-scratch BM25F engine that ranks better
 than Omnisearch, with a drop-in HTTP API); it's now one of four modes.
 
+Part of the marioverse Obsidian plugin suite.
+
 ## Why
 
 Omnisearch is good, but its always-on fuzziness pollutes results and its ranking doesn't let title matches dominate. Sonar is a from-scratch BM25F engine tuned so the note you meant is at the top: title/heading/tag hits outweigh body repetition, prefix matching works as you type, and fuzzy only kicks in when exact matching comes up short.
