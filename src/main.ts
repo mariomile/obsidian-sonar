@@ -1,4 +1,4 @@
-import { Platform, Plugin, TFile } from 'obsidian';
+import { addIcon, Platform, Plugin, TFile } from 'obsidian';
 import { parseSettings, type SonarSettings } from './settings.ts';
 import { SearchService } from './service/search-service.ts';
 import { Extractor } from './service/extractor.ts';
@@ -15,6 +15,16 @@ import { CommandMode } from './ui/modes/command-mode.ts';
 import { CaptureMode } from './ui/modes/capture-mode.ts';
 import { IntentMode } from './ui/modes/intent-mode.ts';
 import { appendCapture } from './service/capture.ts';
+
+// Huge Icons (hugeicons.com, free/MIT, Stroke Rounded, 24x24 grid) — addIcon()
+// always wraps content in a fixed viewBox="0 0 100 100", so a 4.166667x scale
+// (100/24) brings the 24-unit paths to fill it correctly.
+addIcon(
+  'hi-search',
+  '<g transform="scale(4.166667)" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5">' +
+    '<path d="m17 17l4 4m-2-10a8 8 0 1 0-16 0a8 8 0 0 0 16 0"/>' +
+    '</g>',
+);
 
 export default class SonarPlugin extends Plugin {
   settings!: SonarSettings;
@@ -76,7 +86,7 @@ export default class SonarPlugin extends Plugin {
       name: 'Search vault',
       callback: () => this.openModal(),
     });
-    this.addRibbonIcon('search', 'Sonar: search vault', () => this.openModal());
+    this.addRibbonIcon('hi-search', 'Sonar: search vault', () => this.openModal());
     this.addSettingTab(new SonarSettingTab(this.app, this));
 
     this.service.start((ref) => this.registerEvent(ref));
