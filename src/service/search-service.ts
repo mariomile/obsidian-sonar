@@ -48,7 +48,17 @@ export interface QueryOptions {
 /** Max markdown chars fed to the preview renderer (avoids rendering huge notes). */
 const PREVIEW_CHARS = 4000;
 const DEBOUNCE_MS = 400;
-const SAVE_DEBOUNCE_MS = 10_000;
+/** Quiet period before the (large) index cache is re-serialized to disk. The
+ *  cache is a *derived* artifact — in-memory search already reflects edits
+ *  immediately, and a stale/missing cache only costs a partial re-index on the
+ *  next launch. So we persist lazily: a 60s debounce (was 10s) cuts full-index
+ *  writes ~6× during editing sessions, which matters a lot because the file is
+ *  tens of MB and every write is re-uploaded by iCloud + Obsidian Sync. */
+const SAVE_DEBOUNCE_MS = 60_000;
+/** Upper bound on how long continuous edits may defer a save. Without this,
+ *  each mutation re-arms the debounce and a steady editing streak could starve
+ *  the write indefinitely. Caps worst-case cache staleness at 5 min. */
+const SAVE_MAX_WAIT_MS = 5 * 60_000;
 const SLICE_MS = 12;
 const COMPACT_MIN = 2_000;
 /** Guard against a single file read hanging the whole build. */
@@ -100,6 +110,8 @@ export class SearchService {
   private readonly pending = new Map<string, 'change' | 'delete'>();
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private cacheDirty = false;
+  /** When the current unsaved run of mutations began — anchors SAVE_MAX_WAIT. */
+  private saveFirstDirtyAt = 0;
   private saveInFlight: Promise<void> | null = null;
   private disposed = false;
   private readonly progressListeners = new Set<(status: IndexStatus) => void>();
@@ -524,11 +536,20 @@ export class SearchService {
 
   scheduleSave(): void {
     this.cacheDirty = true;
+    if (this.saveFirstDirtyAt === 0) this.saveFirstDirtyAt = Date.now();
     this.armSaveTimer();
   }
 
   private armSaveTimer(): void {
     if (this.disposed) return;
+    // Bound worst-case staleness: once the current dirty run has waited past
+    // SAVE_MAX_WAIT, stop deferring and save now instead of re-arming.
+    if (this.saveFirstDirtyAt !== 0 && Date.now() - this.saveFirstDirtyAt >= SAVE_MAX_WAIT_MS) {
+      if (this.saveTimer) clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+      void this.saveCache();
+      return;
+    }
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
@@ -552,8 +573,10 @@ export class SearchService {
 
   private async writeCache(path: string): Promise<void> {
     // Clear before the first await. A concurrent mutation flips it back to true
-    // and is therefore guaranteed a subsequent save.
+    // (and re-anchors saveFirstDirtyAt via scheduleSave) and is therefore
+    // guaranteed a subsequent save.
     this.cacheDirty = false;
+    this.saveFirstDirtyAt = 0;
     try {
       const threshold = Math.max(COMPACT_MIN, this.index.docCount * 0.2);
       if (this.index.tombstoneCount > threshold) this.index.compact();
