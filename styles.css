@@ -626,7 +626,33 @@ body.is-phone .modal-container .sonar-modal.sonar-modal.sonar-modal {
 }
 .is-phone .sonar-chips,
 .sonar-modal.is-narrow .sonar-chips {
-  flex-wrap: wrap;
+  /* Icon-only chips (below) are narrow enough to fit one row even on the
+   * smallest phones; keep it single-line and scroll sideways as a safety net
+   * instead of wrapping into a second row that eats result space. */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.is-phone .sonar-chips::-webkit-scrollbar,
+.sonar-modal.is-narrow .sonar-chips::-webkit-scrollbar {
+  display: none;
+}
+/* Icons only on the phone sheet — labels ("In: some/folder/path") are what
+ * force the row to wrap. The active/highlighted background plus the
+ * aria-label (Obsidian's own tooltip source) carry the meaning instead. */
+.is-phone .sonar-chip__label,
+.sonar-modal.is-narrow .sonar-chip__label {
+  display: none;
+}
+.is-phone .sonar-chip,
+.sonar-modal.is-narrow .sonar-chip {
+  flex: none;
+  justify-content: center;
+  padding: 0;
+  height: 36px;
+  /* Square-ish tap target matching .sonar-icon-btn below; a touch wider than
+   * tall so the clear × on active chips doesn't get cramped against the icon. */
+  min-width: 36px;
 }
 .is-phone .sonar-result,
 .sonar-modal.is-narrow .sonar-result {
@@ -644,10 +670,6 @@ body.is-phone .modal-container .sonar-modal.sonar-modal.sonar-modal {
   width: 40px;
   height: 40px;
 }
-.is-phone .sonar-chip {
-  height: 36px;
-}
-
 @media (max-width: 600px) {
   .sonar-preview {
     display: none;
