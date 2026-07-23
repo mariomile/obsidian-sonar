@@ -115,3 +115,8 @@ Create a `.obsidian-plugin-dir` file containing the absolute path to your vault'
 ## Roadmap
 
 - **Wave 2 — semantic search**: a QMD-backed `deep` provider (local embeddings + reranking) fused with keyword results via RRF, for concept-level recall beyond keywords.
+
+## Try it
+
+See it running in the [Obsidianverse sample vault](https://github.com/mariomile/obsidianverse-sample-vault) — a small, fictional vault with the whole plugin suite pre-configured.
+
