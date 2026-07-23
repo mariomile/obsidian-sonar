@@ -360,11 +360,16 @@ export class SearchService {
       for (const r of results) r.score *= this.frecency.boost(r.path, opts.now);
       results.sort((a, b) => b.score - a.score);
     }
-    const hits: KeywordHit[] = [];
-    for (const r of results) {
-      if (opts.signal?.aborted) break;
-      hits.push({ ...r, excerpt: await this.buildExcerpt(r) });
-    }
+    // Excerpts read live file text (cachedRead). Fire them concurrently rather
+    // than awaiting each in turn — wall-clock drops from sum-of-reads to the
+    // slowest single read. Order is preserved by Promise.all's index mapping.
+    if (opts.signal?.aborted) return [];
+    const hits: KeywordHit[] = await Promise.all(
+      results.map(async (r) => ({
+        ...r,
+        excerpt: opts.signal?.aborted ? undefined : await this.buildExcerpt(r),
+      }))
+    );
     return hits;
   }
 

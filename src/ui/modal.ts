@@ -169,6 +169,10 @@ export class SonarModal extends Modal {
   private sortKey: SortKey;
 
   private cancelQuery: (() => void) | null = null;
+  /** Coalesces bursts of keystrokes into a single query fire. Typing "hello"
+   *  should run one search, not five. 150ms is below perceptible latency. */
+  private queryDebounceTimer: number | null = null;
+  private static readonly QUERY_DEBOUNCE_MS = 150;
   private queryStart = 0;
   private readonly previewComponent = new Component();
   private thumbnails!: ThumbnailRenderer;
@@ -325,7 +329,7 @@ export class SonarModal extends Modal {
     lastFilters.tag = this.tagFilter;
     lastFilters.date = this.dateFilter;
     lastFilters.type = this.typeFilter;
-    this.cancelQuery?.();
+    this.cancelPendingQuery();
     this.thumbnails.dispose();
     this.preview.dispose();
     this.previewComponent.unload();
@@ -573,7 +577,7 @@ export class SonarModal extends Modal {
     // with the "Indexing…" status (they'd otherwise both show on empty query).
     this.hintEl?.toggle(!this.mode && !this.raw.trim() && this.deps.service.getStatus().ready);
     if (this.mode) {
-      this.cancelQuery?.();
+      this.cancelPendingQuery();
       const active = this.mode;
       void Promise.resolve(active.rows(this.stripped)).then((rows) => {
         if (this.mode !== active) return; // mode changed while awaiting
@@ -582,12 +586,32 @@ export class SonarModal extends Modal {
       });
       return;
     }
-    this.cancelQuery?.();
+    this.cancelPendingQuery();
     const raw = this.raw.trim();
     if (!raw) {
       this.buildBrowse();
       return;
     }
+    // Debounce the actual query fire; input chrome (clear button, mode pill)
+    // already updated synchronously in onInput, so typing stays responsive.
+    this.queryDebounceTimer = window.setTimeout(() => {
+      this.queryDebounceTimer = null;
+      this.runKeywordQuery(raw);
+    }, SonarModal.QUERY_DEBOUNCE_MS);
+  }
+
+  /** Cancel both a queued (debounced) query and any in-flight one. */
+  private cancelPendingQuery(): void {
+    if (this.queryDebounceTimer !== null) {
+      window.clearTimeout(this.queryDebounceTimer);
+      this.queryDebounceTimer = null;
+    }
+    this.cancelQuery?.();
+  }
+
+  /** Fire the fused keyword query for `raw` and render its streamed updates.
+   *  Split out of refresh() so it can run behind a debounce. */
+  private runKeywordQuery(raw: string): void {
     this.queryStart = performance.now();
     const prevPath = this.selectedPath();
     this.cancelQuery = this.deps.registry.query(
