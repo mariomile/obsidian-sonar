@@ -394,6 +394,9 @@ export class SonarModal extends Modal {
   ): void {
     const chip = this.chipsEl.createEl('button', { cls: 'sonar-chip' });
     chip.toggleClass('is-active', active);
+    // Doubles as the accessible name and, via Obsidian's own tooltip system, the
+    // hover/long-press hint that replaces the label on the icon-only phone chips.
+    chip.setAttribute('aria-label', label);
     setIcon(chip.createSpan({ cls: 'sonar-chip__icon' }), icon);
     chip.createSpan({ cls: 'sonar-chip__label', text: label });
     chip.addEventListener('click', (e) => onClick(e));
