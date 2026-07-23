@@ -16,7 +16,13 @@ interface PluginsHost {
 
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tiff'];
 const CONCURRENCY = 2;
-const SAVE_DEBOUNCE_MS = 10_000;
+/** Quiet period before the attachment-text cache is rewritten. The whole file
+ *  (multi-MB) is serialized on each save, so persist lazily — the cache is
+ *  derived (re-extractable), so a longer debounce (30s) and a 3-min max-wait
+ *  only risk re-extracting a few attachments after a crash, while cutting
+ *  Sync re-uploads of the large JSON during extraction runs. */
+const SAVE_DEBOUNCE_MS = 30_000;
+const SAVE_MAX_WAIT_MS = 3 * 60_000;
 
 /**
  * Indexes text extracted from PDFs and images via the Text Extractor plugin,
@@ -30,6 +36,7 @@ export class Extractor {
   private readonly textCache = new Map<string, string>();
   private readonly skip = new Set<string>();
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private saveFirstDirtyAt = 0;
 
   constructor(
     private readonly app: App,
@@ -165,6 +172,15 @@ export class Extractor {
   }
 
   private scheduleSave(): void {
+    if (this.saveFirstDirtyAt === 0) this.saveFirstDirtyAt = Date.now();
+    // Once the pending run has waited past the max, save now rather than
+    // re-arming — a steady stream of extractions can't defer it forever.
+    if (Date.now() - this.saveFirstDirtyAt >= SAVE_MAX_WAIT_MS) {
+      if (this.saveTimer) clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+      void this.save();
+      return;
+    }
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
@@ -175,6 +191,7 @@ export class Extractor {
   private async save(): Promise<void> {
     const path = this.path();
     if (!path) return;
+    this.saveFirstDirtyAt = 0;
     try {
       const obj: Record<string, string> = {};
       for (const [p, text] of this.textCache) obj[p] = text;
