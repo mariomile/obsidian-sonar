@@ -196,6 +196,11 @@
   color: var(--text-normal);
   border-color: var(--background-modifier-border);
 }
+/* The filter funnel is a phone-only affordance: on desktop/tablet the chips are
+ * always inline, so the toggle stays hidden (shown again in the phone block). */
+.sonar-filter-toggle {
+  display: none;
+}
 .sonar-chip__icon {
   display: flex;
   opacity: 0.85;
@@ -623,6 +628,37 @@ body.is-phone .modal-container .sonar-modal.sonar-modal.sonar-modal {
 .sonar-modal.is-narrow .sonar-input {
   /* ≥16px avoids iOS auto-zoom on focus. */
   font-size: max(16px, var(--font-ui-medium));
+}
+/* Phone: reveal the funnel toggle and collapse the chips behind it. */
+.is-phone .sonar-filter-toggle,
+.sonar-modal.is-narrow .sonar-filter-toggle {
+  display: flex;
+  position: relative;
+  flex: none;
+}
+/* Funnel tinted while the chips are open, so the toggle reads as pressed. */
+.is-phone .sonar-filter-toggle.is-open,
+.sonar-modal.is-narrow .sonar-filter-toggle.is-open {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+/* Dot badge when a filter/sort is applied but the chips are collapsed, so the
+ * active state stays discoverable. */
+.is-phone .sonar-filter-toggle.has-active::after,
+.sonar-modal.is-narrow .sonar-filter-toggle.has-active::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--interactive-accent);
+}
+/* Collapsed by default on the sheet; the funnel toggles this class off. */
+.is-phone .sonar-chips.is-collapsed,
+.sonar-modal.is-narrow .sonar-chips.is-collapsed {
+  display: none;
 }
 .is-phone .sonar-chips,
 .sonar-modal.is-narrow .sonar-chips {

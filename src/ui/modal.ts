@@ -164,6 +164,11 @@ export class SonarModal extends Modal {
   private tagFilter: string | null = null;
   private dateFilter: DateFilter | null = null;
   private typeFilter: string | null = null;
+  /** Phone sheet layout (set in onOpen). On the sheet the filter chips collapse
+   *  behind a single funnel toggle to keep the compact search surface clean. */
+  private isSheet = false;
+  private filtersExpanded = false;
+  private filterToggle: HTMLButtonElement | null = null;
   /** Unlike the filters above, persists across a full Obsidian restart via
    *  `settings.browseSort` rather than the module-scoped `lastFilters`. */
   private sortKey: SortKey;
@@ -196,6 +201,7 @@ export class SonarModal extends Modal {
     this.modalEl.addClass('sonar-modal');
     this.contentEl.addClass('sonar-modal__content');
     const isSheet = Platform.isPhone || window.innerWidth <= 600;
+    this.isSheet = isSheet;
     if (isSheet) {
       this.modalEl.addClass('is-narrow');
       // Grab handle: the visual cue that the sheet is a drag-to-dismiss surface.
@@ -222,6 +228,19 @@ export class SonarModal extends Modal {
       this.onInput('');
     });
 
+    // Phone-only: a single funnel that reveals the filter chips, so the sheet's
+    // search row stays uncluttered (the six icon-chips are hidden until asked
+    // for). Hidden on desktop via CSS, where the chips always show inline.
+    this.filterToggle = inputRow.createEl('button', {
+      cls: 'sonar-icon-btn sonar-filter-toggle',
+      attr: { 'aria-label': 'Filters' },
+    });
+    setIcon(this.filterToggle.createSpan({ cls: 'sonar-icon-btn__glyph' }), 'list-filter');
+    this.filterToggle.addEventListener('click', () => {
+      this.filtersExpanded = !this.filtersExpanded;
+      this.applyFilterVisibility();
+    });
+
     const closeBtn = inputRow.createEl('button', {
       cls: 'sonar-icon-btn sonar-close',
       attr: { 'aria-label': 'Close' },
@@ -231,6 +250,7 @@ export class SonarModal extends Modal {
 
     this.chipsEl = this.contentEl.createDiv({ cls: 'sonar-chips' });
     this.renderChips();
+    this.applyFilterVisibility();
 
     const body = this.contentEl.createDiv({ cls: 'sonar-body' });
     this.listEl = body.createDiv({ cls: 'sonar-results' });
@@ -379,6 +399,29 @@ export class SonarModal extends Modal {
       this.sortKey !== 'relevance',
       (e) => this.pickSort(e),
     );
+    this.applyFilterVisibility();
+  }
+
+  /** True when any filter/sort is narrowing results — used to badge the phone
+   *  funnel so applied filters stay discoverable while collapsed. */
+  private anyFilterActive(): boolean {
+    return (
+      this.titleOnly ||
+      this.folderFilter !== null ||
+      this.tagFilter !== null ||
+      this.dateFilter !== null ||
+      this.typeFilter !== null ||
+      this.sortKey !== 'relevance'
+    );
+  }
+
+  /** On the phone sheet, keep the chip row collapsed behind the funnel until
+   *  tapped; on desktop the chips are always inline (funnel hidden by CSS). */
+  private applyFilterVisibility(): void {
+    if (!this.chipsEl) return;
+    this.chipsEl.toggleClass('is-collapsed', this.isSheet && !this.filtersExpanded);
+    this.filterToggle?.toggleClass('is-open', this.filtersExpanded);
+    this.filterToggle?.toggleClass('has-active', this.anyFilterActive());
   }
 
   private typeLabel(key: string): string {
