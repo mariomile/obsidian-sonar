@@ -1,4 +1,4 @@
-import { type App, type CachedMetadata, type EventRef, TFile } from 'obsidian';
+import { type App, type CachedMetadata, type EventRef, Platform, TFile } from 'obsidian';
 import { InvertedIndex } from '../index/inverted-index.ts';
 import { extractFields, stripFrontmatter, type NoteMeta } from '../index/field-extract.ts';
 import { htmlToText } from '../index/html-extract.ts';
@@ -101,6 +101,14 @@ function toNoteMeta(cache: CachedMetadata | null): NoteMeta {
  */
 export class SearchService {
   readonly index = new InvertedIndex();
+  /** Mobile "lite" mode: iOS/iPadOS jetsam kills the app when it holds too much
+   *  RAM in the background, and the full index (body postings) is tens of MB
+   *  resident. On mobile we index title/headings/tags/frontmatter ONLY — all
+   *  available from the metadata cache with no file reads — so the resident
+   *  index is a few MB. Two hard invariants follow: (1) never load the desktop
+   *  cache (it's the heavy one), (2) NEVER persist on mobile, or a lite index
+   *  would clobber the desktop's rich index.bin through Sync. */
+  private readonly liteMode = Platform.isMobile;
   private ready = false;
   private indexed = 0;
   private total = 0;
@@ -226,7 +234,10 @@ export class SearchService {
   }
 
   private async buildInitial(): Promise<void> {
-    await this.loadCache();
+    // On mobile, skip the (heavy, desktop-written) cache entirely and build a
+    // lite title/metadata index fresh from the metadata cache — cheap enough to
+    // do every launch, and it keeps the big body-postings arena out of RAM.
+    if (!this.liteMode) await this.loadCache();
 
     const mdFiles = this.app.vault.getMarkdownFiles();
     const htmlFiles = this.settings.indexHtml
@@ -312,11 +323,16 @@ export class SearchService {
   }
 
   private async indexFile(file: TFile): Promise<void> {
+    // Lite mode indexes metadata only (basename/headings/tags/frontmatter/
+    // aliases), so skip the file read: an empty body just yields empty BODY
+    // postings while every other field still comes from the metadata cache.
     let content = '';
-    try {
-      content = await withTimeout(this.app.vault.cachedRead(file), READ_TIMEOUT_MS);
-    } catch {
-      return;
+    if (!this.liteMode) {
+      try {
+        content = await withTimeout(this.app.vault.cachedRead(file), READ_TIMEOUT_MS);
+      } catch {
+        return;
+      }
     }
     const meta = toNoteMeta(this.app.metadataCache.getFileCache(file));
     const { fields, tags } = extractFields({ basename: file.basename, content, meta });
@@ -334,13 +350,19 @@ export class SearchService {
 
   /** Read, extract, and index a single HTML file's text as docType 'html'. */
   private async indexHtmlFile(file: TFile): Promise<void> {
-    let raw = '';
-    try {
-      raw = await withTimeout(this.app.vault.cachedRead(file), READ_TIMEOUT_MS);
-    } catch {
-      return;
+    // Lite mode: HTML has no metadata cache to fall back on, so index the
+    // filename only (no read, no body text).
+    let text = '';
+    let title: string | null = null;
+    if (!this.liteMode) {
+      let raw = '';
+      try {
+        raw = await withTimeout(this.app.vault.cachedRead(file), READ_TIMEOUT_MS);
+      } catch {
+        return;
+      }
+      ({ title, text } = htmlToText(raw));
     }
-    const { title, text } = htmlToText(raw);
     const basename = title ?? file.basename;
     const { fields, tags } = extractFields({ basename, content: text, meta: {} });
     if (this.index.getIdByPath(file.path) !== undefined) this.index.tombstone(file.path);
@@ -535,6 +557,9 @@ export class SearchService {
   }
 
   scheduleSave(): void {
+    // Never persist on mobile: the lite index would overwrite the desktop's
+    // full index.bin through Sync, degrading desktop search to title-only.
+    if (this.liteMode) return;
     this.cacheDirty = true;
     if (this.saveFirstDirtyAt === 0) this.saveFirstDirtyAt = Date.now();
     this.armSaveTimer();
@@ -558,6 +583,7 @@ export class SearchService {
   }
 
   private saveCache(): Promise<void> {
+    if (this.liteMode) return Promise.resolve(); // mobile never writes the shared cache
     const path = this.cachePath();
     if (!path || !this.cacheDirty) return Promise.resolve();
     if (this.saveInFlight) return this.saveInFlight;
