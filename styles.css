@@ -1,14 +1,21 @@
 /*
  * Sonar — Notion-style two-pane quick-find.
  * Native Obsidian variables for theme-fit + plugin-prefixed --sonar-* tokens,
- * matching the marioverse suite conventions (quiet input focus, 80ms hover
- * transitions, 28px transparent icon buttons).
+ * matching the marioverse suite conventions (quiet input focus, Cosmos-token
+ * hover transitions with canonical fallbacks, 28px transparent icon buttons).
+ * mv-kit (obsidian-cosmos-theme/docs/mv-kit.md) is the normative checklist:
+ * plugins are theme-independent and consume --cosmos-*/--mv-* tokens with an
+ * inline literal fallback, never define them at :root.
  */
 
 .sonar-modal {
   --sonar-radius: var(--radius-l, 12px);
   --sonar-row-radius: var(--radius-m, 8px);
-  --sonar-ease: 80ms ease;
+  /* mv-kit §3: hover/reveal wash consumes the Cosmos motion tokens with
+   * canonical fallbacks (theme-as-override — never define --cosmos-*/--mv-*
+   * ourselves at :root). Falls back to the same literal values Sonar always
+   * shipped when Cosmos is absent. */
+  --sonar-ease: var(--cosmos-t-fast, 140ms) var(--mv-lift, cubic-bezier(0.22, 1, 0.36, 1));
   --sonar-mark: hsla(var(--interactive-accent-hsl, 220 70% 60%), 1);
   /* Result thumbnail: a note preview is rendered at `size / scale` px wide, then
    * CSS-scaled down into a `size`-square box. Render width = 40 / 0.125 = 320px. */
@@ -179,7 +186,9 @@
   height: 26px;
   padding: 0 10px;
   border: var(--border-width) solid transparent;
-  border-radius: 7px;
+  /* mv-kit §1: chip radius consumes the suite-wide --mv-r1 chip/toolbar
+   * token instead of a hand-picked pixel value. */
+  border-radius: var(--mv-r1, 6px);
   background: transparent;
   color: var(--text-muted);
   font-size: var(--font-ui-small);
@@ -255,12 +264,17 @@
   border-color: transparent;
 }
 
-/* ---- group headers ---- */
+/* ---- group headers ----
+ * mv-kit §4 micro-label recipe verbatim (section eyebrow: "Notes", "Today",
+ * …) — uppercase + letter-spacing distinguish it from a result title instead
+ * of relying on weight alone. */
 .sonar-group {
   padding: var(--size-4-3) var(--size-4-2) var(--size-4-1);
   font-size: var(--font-ui-smaller);
-  font-weight: var(--font-semibold);
+  font-weight: var(--font-medium);
   color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 .sonar-group:first-child {
   padding-top: var(--size-4-1);
@@ -483,8 +497,10 @@
   max-width: 100%;
   height: auto;
 }
+/* mv-kit §4 whisper empty-message recipe verbatim. */
 .sonar-preview__empty {
   color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
 }
 
 /* ---- footer ---- */
@@ -536,7 +552,10 @@
   max-height: calc(100dvh - env(safe-area-inset-top, 0px)) !important;
   margin: 0 !important;
   border-radius: var(--radius-l, 16px) var(--radius-l, 16px) 0 0;
-  animation: sonar-sheet-rise 280ms cubic-bezier(0.32, 0.72, 0, 1);
+  /* mv-kit §3: structural sheet-rise consumes --cosmos-t-panel /
+   * --cosmos-native (the exact recipe cosmos-phone.css's own sheet-rise
+   * keyframe uses) with canonical fallbacks. */
+  animation: sonar-sheet-rise var(--cosmos-t-panel, 300ms) var(--cosmos-native, cubic-bezier(0.32, 0.72, 0, 1));
 }
 /* Slide up from below the fold. iOS-sheet easing: quick start, soft settle. */
 @keyframes sonar-sheet-rise {
@@ -685,10 +704,9 @@ body.is-phone .modal-container .sonar-modal.sonar-modal.sonar-modal {
   flex: none;
   justify-content: center;
   padding: 0;
-  height: 36px;
-  /* Square-ish tap target matching .sonar-icon-btn below; a touch wider than
-   * tall so the clear × on active chips doesn't get cramped against the icon. */
-  min-width: 36px;
+  /* mv-kit §2: every phone tap target meets --cosmos-touch-min (44px). */
+  height: var(--cosmos-touch-min, 44px);
+  min-width: var(--cosmos-touch-min, 44px);
 }
 .is-phone .sonar-result,
 .sonar-modal.is-narrow .sonar-result {
@@ -701,10 +719,11 @@ body.is-phone .modal-container .sonar-modal.sonar-modal.sonar-modal {
   --sonar-thumb-scale: 0.15;
 }
 /* Comfortable tap targets on the phone sheet: the close × and the filter chips
- * are the primary touch controls and were sized for a mouse (28 / 26px). */
+ * are the primary touch controls and were sized for a mouse (28 / 26px).
+ * mv-kit §2: meets --cosmos-touch-min (44px). */
 .is-phone .sonar-icon-btn {
-  width: 40px;
-  height: 40px;
+  width: var(--cosmos-touch-min, 44px);
+  height: var(--cosmos-touch-min, 44px);
 }
 @media (max-width: 600px) {
   .sonar-preview {
