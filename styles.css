@@ -4,17 +4,20 @@
  * matching the marioverse suite conventions (quiet input focus, Cosmos-token
  * hover transitions with canonical fallbacks, 28px transparent icon buttons).
  * mv-kit (obsidian-cosmos-theme/docs/mv-kit.md) is the normative checklist:
- * plugins are theme-independent and consume --cosmos-*/--mv-* tokens with an
- * inline literal fallback, never define them at :root.
+ * plugins are theme-independent and consume --cosmos-* and --mv-* tokens with
+ * an inline literal fallback, never define them at :root.
+ * NB: never write a token glob immediately followed by a slash inside a CSS
+ * comment — that sequence closes the comment early and silently drops the
+ * rule that follows (it cost us the modal width once; see style-contract).
  */
 
 .sonar-modal {
   --sonar-radius: var(--radius-l, 12px);
   --sonar-row-radius: var(--radius-m, 8px);
   /* mv-kit §3: hover/reveal wash consumes the Cosmos motion tokens with
-   * canonical fallbacks (theme-as-override — never define --cosmos-*/--mv-*
-   * ourselves at :root). Falls back to the same literal values Sonar always
-   * shipped when Cosmos is absent. */
+   * canonical fallbacks (theme-as-override — never define the --cosmos- or
+   * --mv- tokens ourselves at :root). Falls back to the same literal values
+   * Sonar always shipped when Cosmos is absent. */
   --sonar-ease: var(--cosmos-t-fast, 140ms) var(--mv-lift, cubic-bezier(0.22, 1, 0.36, 1));
   --sonar-mark: hsla(var(--interactive-accent-hsl, 220 70% 60%), 1);
   /* Result thumbnail: a note preview is rendered at `size / scale` px wide, then

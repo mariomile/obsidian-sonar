@@ -18,6 +18,32 @@ function stripComments(source: string): string {
 }
 
 describe('mv-kit style contract', () => {
+  // Regression guard for a real outage (2026-07-24): a comment written as
+  // `--cosmos-*` immediately followed by a slash terminates the comment early.
+  // Everything after it parses as garbage and the browser DROPS the enclosing
+  // rule — which silently cost `.sonar-modal` its `width: 880px`, collapsing
+  // the modal to Obsidian's 560px default. Invisible to eslint/tsc/vitest and
+  // to the raw-value scan below, so it gets its own assertion.
+  it('no CSS comment terminates early (token glob followed by a slash)', () => {
+    const offenders = css
+      .split('\n')
+      .map((line, idx) => ({ line: line.trim(), n: idx + 1 }))
+      .filter(({ line }) => /--[\w-]*\*\//.test(line));
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('stripping comments leaves no orphaned prose (structural parse check)', () => {
+    // If a comment closed early, its remaining lines survive the strip as
+    // stray ` * ...` prose sitting in declaration position.
+    const orphans = stripComments(css)
+      .split('\n')
+      .map((line, idx) => ({ line: line.trim(), n: idx + 1 }))
+      .filter(({ line }) => /^\*\s|^\*$/.test(line));
+
+    expect(orphans).toEqual([]);
+  });
+
   it('raw ms/hex/cubic-bezier values appear only as var() fallbacks', () => {
     const code = stripComments(css);
     const lines = code.split('\n');
