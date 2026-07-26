@@ -212,3 +212,116 @@ this rule would require were there a literal panel to check.
   and the new Pop shadow, which is device-agnostic) are verified by reading
   the resulting CSS against the kit's phone column and against Sonar's own
   existing `.is-phone`/`.sonar-modal.is-narrow` precedent in the same file.
+
+---
+
+## §7 — wave 2026-07 lettura
+
+Audit of `styles.css` (823 lines pre-fix) + `src/ui/**` against
+`obsidian-cosmos-theme/docs/mv-kit.md` §7 "Reading rhythm" (as of commit
+`1898860`), desktop and phone columns, plus §§1-6 read for context. §7 is
+**descriptive-first** — Mario owns reading type by use-verdict, not by spec
+(the 18px phone body, `575755e`) — so this wave's mandate is coherence +
+tokenization only: prose consumes the reading tokens with a literal
+fallback, or a deviation is documented with a reason. No new taste values.
+
+Prose surfaces in scope: result snippets (`.sonar-result__excerpt`) and the
+preview pane body (`.sonar-preview__body.markdown-rendered`). Chrome
+(`.sonar-preview__title`, paths, labels, group eyebrows) stays on
+`--font-ui-*` per §2 — confirmed untouched, see verdict below.
+
+Per-rule verdict: **pass** (already compliant) / **fixed** (this wave) /
+**waived** (kit rule doesn't literally apply, with reason) / **deviation**
+(a taste-looking value kept as-is, with a stated reason per §7's own MUST:
+"a documented deviation is a decision, an undocumented one is drift").
+
+### Result snippets (`.sonar-result__excerpt`)
+
+| Surface | Desktop | Phone | Verdict |
+|---|---|---|---|
+| `.sonar-result__excerpt` (2-line clamped snippet inside a result row) | `font-size: var(--font-ui-smaller)`, no explicit `line-height`/paragraph margin — inherits the row's native cascade | same, no phone-specific rule (the row already gets extra phone padding per wave 1 §2, unrelated to type) | **waived, judged as chrome-scale metadata, not standalone prose** — the excerpt sits in the same visual register as the row's other `--font-ui-smaller` fields (`.sonar-result__path`, `.sonar-result__score`, `.sonar-result__source`), all chrome per §2. It has no independent paragraph rhythm to tokenize (`-webkit-line-clamp: 2` truncates before any inter-paragraph gap could ever render, and it sets no `line-height` of its own to override). §7's "result snippet" example in its own MUST clause names it as a prose surface, but here it functions as a metadata line, not a reading surface — the note is content Mario reads *about*, not content rendered *as* a page. No hardcoded reading-rhythm value exists to fix. |
+
+### Preview pane body (`.sonar-preview__body.markdown-rendered`)
+
+| Property | Before | After | Verdict |
+|---|---|---|---|
+| `line-height` | hardcoded `1.55` | `var(--line-height-normal, 1.6)` | **fixed** — was a bare number with no traceability to the theme's reading token. Fallback is `1.6` (the desktop value in mv-kit's §7 table), not `1.55` (phone's value): the preview pane has no phone variant at all (`.is-phone .sonar-preview` / `.sonar-modal.is-narrow .sonar-preview { display: none }`, wave 1), so there is no phone rendering context to fall back to — this surface is desktop/tablet-only by construction, matching the desktop column exactly. |
+| Paragraph-like margin (`p`, `ul`, `ol`, `blockquote`, `pre`) | hardcoded `0.4em 0` | `calc(var(--p-spacing, 1rem) * 0.4) 0` | **fixed** — now traces to `--p-spacing` (canonical `1rem` per §7's table) with the same 0.4× tightening multiplier the preview already used, rather than a bare `0.4em`. The multiplier itself (0.4×) is the deliberate "reads as a preview, not a page" compaction already documented in the block's header comment — kept, now expressed as a token-relative value instead of an opaque em. |
+| `font-size` (body) | `var(--font-ui-small)` | unchanged | **deviation, documented** — mv-kit §7 lists `--font-text-size` (16px desktop / 18px phone, user-owned) as the prose token, but the preview body intentionally steps *down* to the UI-scale `--font-ui-small` so a search-result preview visually reads smaller than the note it previews (the adjacent CSS comment already stated this intent: "scale the type down … so it reads as a preview, not a page"). This is exactly the brief's named exception — a scoped compact-preview deviation — and is now cross-referenced from the CSS comment to this audit entry. Not changed to `--font-text-size` because that would make the preview pane read at the same size as the note itself, undoing the deliberate compaction. |
+| Heading scale (h1/h2/h3: `1.35em`/`1.2em`/`1.08em`) | unchanged | unchanged | **deviation, documented** — mv-kit §7 says the heading scale belongs to the theme (`1.618/1.462/1.318em`) and a plugin MUST NOT override it, but explicitly carves out an exception for "a scoped compact heading scale inside the plugin's own preview pane" as "a deliberate deviation" when documented. This is precisely that case: the scale is scoped to `.sonar-preview__body.markdown-rendered h1/h2/h3` only (never touches the theme's global heading scale or any other surface), and exists for the same "reads as a preview, not a page" reason as the font-size step-down above. Verdict: kept, now explicitly named as the §7-sanctioned exception rather than an implicit one. |
+| `--file-line-width` | never set | never set | **pass** — grepped `styles.css` for `file-line-width`: zero hits. The preview pane's width comes from its flex-basis (`.sonar-preview { flex: 1 1 44% }`, wave-1-unrelated layout), never from overriding the theme's reading-measure token. |
+| `h1`/`h2`/`h3`/`h4` `line-height: 1.3` | unchanged | unchanged | **waived, heading-specific, not the §7 prose line-height rule** — §7's `--line-height-normal` MUST targets body-text prose rhythm; the compact heading line-height is part of the same documented compact-heading-scale deviation immediately above (headings in a tightened preview need a tighter line-height than the 1.618em-scaled theme default would imply, for the same space reason). Not separately tokenized because there is no `--heading-line-height-*` token in mv-kit's vocabulary to consume — this is genuinely bespoke to the compact-preview exception, same reasoning as the font-size scale it sits next to. |
+
+### Chrome surfaces — confirmed untouched
+
+| Surface | Verdict |
+|---|---|
+| `.sonar-preview__title` (`font-size: var(--font-ui-large); font-weight: var(--font-bold); line-height: 1.25`) | **pass, correctly chrome** — stays on `--font-ui-*` per §2, not a reading-rhythm surface. Its own `line-height: 1.25` is a title/heading-chrome line-height (tight, one-line), unrelated to §7's body-prose `--line-height-normal`; not in scope for this wave. |
+| `.sonar-preview__path` (`font-size: var(--font-ui-smaller)`) | **pass** — chrome metadata, unchanged. |
+| `.sonar-group` micro-label, `.sonar-preview__empty` whisper message | **pass** — already verified against §4's chrome recipes in wave 1; unaffected by §7. |
+| `.sonar-thumb__inner.markdown-rendered` (result-row mini-thumbnail render, `src/ui/thumbnail.ts`) | **pass, out of §7's prose scope by design** — this is a live markdown render CSS-`transform: scale()`-shrunk to a decorative thumbnail (`--sonar-thumb-scale`, 0.125/0.15), not a readable prose surface Mario reads text in — it has no local `line-height`/margin override in `styles.css` at all, so it inherits Obsidian's native reading tokens untouched and is uniformly shrunk visually afterward. Confirmed via grep: zero `.sonar-thumb__inner` typography rules exist beyond sizing/positioning. |
+
+### Phone parity
+
+| Check | Verdict |
+|---|---|
+| Preview pane on phone | **N/A by design** — `.is-phone .sonar-preview` / `.sonar-modal.is-narrow .sonar-preview { display: none }` (wave 1, confirmed still in place at line ~667-670): the two-pane layout collapses to results-only on phone, so `.sonar-preview__body.markdown-rendered` never renders there. The line-height/margin fixes above are desktop-only in *effect*, which is correct — there is no phone reading-rhythm value to harmonize because there is no phone rendering of this surface at all. |
+| Result snippet on phone | **pass** — `.sonar-result__excerpt` renders identically on phone (no phone-specific override exists or is needed); already judged chrome-scale above, so §7's phone/desktop line-height split (1.55 vs 1.6) doesn't apply to it either. |
+| 1.55 phone / 1.6 desktop `--line-height-normal` difference | **not harmonized, per explicit instruction** — mv-kit §7 states this difference is intentional (larger 18px phone body needs proportionally less leading) and must not be "fixed" to one number. This wave introduces exactly one `--line-height-normal` consumer (the preview body), which is desktop-only per the row above, so the question of which fallback to use on phone never arises — but for the record, if the preview pane ever grows a phone variant, it must fall back to `1.55` there, not `1.6`. |
+
+### Proposte per Mario (non applicate)
+
+None of substance — the two taste-looking values in the preview body (the
+`--font-ui-small` font-size step-down and the compact `1.35/1.2/1.08em`
+heading scale) are the brief's own named exception ("a scoped compact
+heading scale inside the plugin's own preview pane may be a deliberate
+deviation") and are documented in place rather than proposed as changes.
+Two smaller judgment calls worth flagging if Mario wants to revisit later:
+
+- **The 0.4× paragraph-gap multiplier itself** (now `calc(var(--p-spacing, 1rem) * 0.4)`,
+  previously a bare `0.4em`) is unchanged in *value* — only in traceability.
+  If Mario would rather the preview breathe closer to the theme's full
+  `--p-spacing` (i.e. drop the 0.4× compaction, not just tokenize it), that's
+  a taste call this wave deliberately did not make.
+- **Heading `line-height: 1.3`** inside the preview has no matching
+  `--heading-line-height-*` token in mv-kit's current vocabulary to consume
+  — if a future mv-kit wave adds one, this value should be revisited then.
+
+### Not touched (explicit non-goals, confirmed out of scope)
+
+- No layout/DOM changes anywhere — both fixes are token substitutions on
+  already-existing declarations (`line-height`, `margin`) inside
+  `.sonar-preview__body.markdown-rendered`.
+- `.sonar-preview__body.markdown-rendered`'s `font-size: var(--font-ui-small)`
+  and h1-h3 compact heading scale — kept as the brief's named, documented
+  exception, not silently deleted.
+- `.sonar-result__excerpt` — audited, judged chrome-scale metadata (no
+  hardcoded reading-rhythm value existed to fix), not a prose surface in
+  practice despite §7 naming "search snippet" as an example prose surface in
+  the abstract.
+- `.sonar-thumb__inner.markdown-rendered` (mini-thumbnail render) — audited,
+  confirmed to carry no local typography override at all; out of scope
+  because there is nothing to fix, not because it was skipped.
+
+### Verification
+
+- `pnpm lint` — 0 issues
+- `pnpm test` — 28 test files, 192 tests passing (190 pre-existing + 2 new in
+  `src/style-contract.test.ts`): "§7: `.sonar-preview__body` prose
+  line-height consumes `--line-height-normal`, never a bare number" and "§7:
+  `.sonar-preview__body` paragraph-like margins consume `--p-spacing`, never
+  a bare value". Both new assertions were red-green verified: run against
+  the pre-fix CSS first (confirmed failing on the real `line 442:
+  "line-height: 1.55;"` / `line 454: "margin: 0.4em 0;"` values), then the
+  fix applied and the same run confirmed green — the other 190 pre-existing
+  tests stayed green throughout.
+- `pnpm typecheck` — 0 errors
+- `pnpm build` (esbuild production) — succeeded
+- `pnpm release:check` — green end-to-end (lint → test → build, all above)
+- Desktop screenshot / live vault reload verification: **pending** — not
+  performed this wave (no live vault-reload check run in this session).
+- Phone verification: **N/A for this wave's actual fixes** — the preview
+  pane (the only surface touched) has no phone rendering at all (see Phone
+  parity above), so there is no phone CSS state to verify by reading against
+  the kit's phone column beyond confirming the `display: none` gate is
+  unchanged, which it is.
