@@ -485,11 +485,18 @@
 }
 
 /* Compact rendered-markdown preview: keep Obsidian's formatting but scale the
- * type down and tighten vertical rhythm so it reads as a preview, not a page. */
+ * type down and tighten vertical rhythm so it reads as a preview, not a page.
+ * mv-kit §7: the font-size step-down (--font-ui-small) and heading scale below
+ * are a deliberate, documented deviation from the theme's reading tokens —
+ * see docs/2026-07-mv-kit-audit.md "§7 — wave 2026-07 lettura" for the
+ * reasoning. line-height and paragraph-gap are NOT part of that deviation:
+ * they consume the theme's reading tokens with a literal fallback so the
+ * compact rhythm still traces back to --line-height-normal / --p-spacing
+ * rather than a hand-picked number. */
 .sonar-preview__body.markdown-rendered {
   margin-top: var(--size-4-3);
   font-size: var(--font-ui-small);
-  line-height: 1.55;
+  line-height: var(--line-height-normal, 1.6);
   color: var(--text-muted);
   overflow-wrap: anywhere;
 }
@@ -501,7 +508,10 @@
 .sonar-preview__body.markdown-rendered ol,
 .sonar-preview__body.markdown-rendered blockquote,
 .sonar-preview__body.markdown-rendered pre {
-  margin: 0.4em 0;
+  /* Tightened to 0.4x --p-spacing (rather than the full 1rem) so the preview
+   * reads as a compact excerpt, not a full page — same compact-rhythm intent
+   * as the comment above, now traceable to the token instead of a bare em. */
+  margin: calc(var(--p-spacing, 1rem) * 0.4) 0;
 }
 .sonar-preview__body.markdown-rendered h1,
 .sonar-preview__body.markdown-rendered h2,

@@ -168,4 +168,65 @@ describe('mv-kit style contract', () => {
 
     expect(violations).toEqual([]);
   });
+
+  // mv-kit §7 (Reading rhythm) — wave 2026-07 lettura, per
+  // docs/2026-07-mv-kit-audit.md's "§7 — wave 2026-07 lettura" section.
+  //
+  // "A plugin that renders prose … inherits the reading tokens —
+  // --line-height-normal, --p-spacing, --font-text-size — rather than
+  // hardcoding its own line-height or paragraph gap." The preview pane's
+  // rendered-markdown body is Sonar's one prose surface; its line-height must
+  // resolve through --line-height-normal (desktop fallback 1.6 — the preview
+  // pane has no phone variant, it's hidden there per the phone layout block),
+  // never a bare number.
+  it('§7: .sonar-preview__body prose line-height consumes --line-height-normal, never a bare number', () => {
+    const lines = stripComments(css).split('\n');
+    let insideBody = false;
+    let depth = 0;
+    let bodyOpenDepth = -1;
+    const violations: string[] = [];
+
+    lines.forEach((rawLine, idx) => {
+      const line = rawLine.trim();
+      if (/^\.sonar-preview__body\.markdown-rendered\s*\{/.test(line)) {
+        insideBody = true;
+        bodyOpenDepth = depth;
+      }
+      if (insideBody && /^line-height:/.test(line)) {
+        if (!/var\(--line-height-normal\s*,/.test(line)) {
+          violations.push(`line ${idx + 1}: "${line}"`);
+        }
+      }
+      const opens = (line.match(/\{/g) ?? []).length;
+      const closes = (line.match(/\}/g) ?? []).length;
+      depth += opens - closes;
+      if (insideBody && depth <= bodyOpenDepth) {
+        insideBody = false;
+      }
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  // mv-kit §7: paragraph-like prose elements (p/ul/ol/blockquote/pre) inside
+  // the preview body must gap with --p-spacing, not a bare em value, so the
+  // compact preview's vertical rhythm stays traceable to the theme's reading
+  // tokens even though the multiplier is intentionally tightened (documented
+  // in the adjacent CSS comment).
+  it('§7: .sonar-preview__body paragraph-like margins consume --p-spacing, never a bare value', () => {
+    const lines = stripComments(css).split('\n');
+    const violations: string[] = [];
+
+    lines.forEach((rawLine, idx) => {
+      const line = rawLine.trim();
+      // Only the specific rule targeting p/ul/ol/blockquote/pre margins
+      // (identified by the multi-selector block ending in `pre {`) — not the
+      // heading margin rule, which is a separately-judged deviation.
+      if (/^margin:\s*[\d.]+em\s+0;$/.test(line) && !/var\(--p-spacing/.test(line)) {
+        violations.push(`line ${idx + 1}: "${line}"`);
+      }
+    });
+
+    expect(violations).toEqual([]);
+  });
 });
