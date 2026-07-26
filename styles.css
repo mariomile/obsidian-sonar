@@ -14,11 +14,18 @@
 .sonar-modal {
   --sonar-radius: var(--radius-l, 12px);
   --sonar-row-radius: var(--radius-m, 8px);
-  /* mv-kit §3: hover/reveal wash consumes the Cosmos motion tokens with
+  /* mv-kit §3/§6: hover/reveal wash consumes the Cosmos motion tokens with
    * canonical fallbacks (theme-as-override — never define the --cosmos- or
    * --mv- tokens ourselves at :root). Falls back to the same literal values
-   * Sonar always shipped when Cosmos is absent. */
+   * Sonar always shipped when Cosmos is absent.
+   * Two aliases per §6's hover-richness rule: colour/opacity washes ease
+   * with --mv-wash, physical transforms ease with --mv-lift — the two
+   * easings are not interchangeable. Every hover in this file today is a
+   * colour/opacity wash (no transform lifts), so --sonar-ease was wired to
+   * --mv-lift by mistake; --sonar-wash-ease is the corrected alias and
+   * --sonar-ease is kept only for any future transform use. */
   --sonar-ease: var(--cosmos-t-fast, 140ms) var(--mv-lift, cubic-bezier(0.22, 1, 0.36, 1));
+  --sonar-wash-ease: var(--cosmos-t-fast, 140ms) var(--mv-wash, cubic-bezier(0.25, 1, 0.5, 1));
   --sonar-mark: hsla(var(--interactive-accent-hsl, 220 70% 60%), 1);
   /* Result thumbnail: a note preview is rendered at `size / scale` px wide, then
    * CSS-scaled down into a `size`-square box. Render width = 40 / 0.125 = 320px. */
@@ -29,6 +36,13 @@
   padding: 0;
   border-radius: var(--sonar-radius);
   overflow: hidden;
+  /* mv-kit §6: the omni-bar modal is a Pop-tier surface (floats over content,
+   * closes on outside-click) — it consumes --cosmos-pop-shadow with a
+   * literal fallback instead of relying on Obsidian's native .modal shadow
+   * (which Cosmos does not itself upgrade to the Pop token for a plain
+   * .modal). --shadow-l matches the fallback other suite plugins use for a
+   * similarly large floating surface (obsidian-aiditor's .aiditor-popover). */
+  box-shadow: var(--cosmos-pop-shadow, var(--shadow-l));
 }
 
 /* Lift the modal toward the top, Spotlight-style. */
@@ -67,11 +81,15 @@
   color: var(--text-muted);
   cursor: pointer;
   box-shadow: none;
-  transition: background-color var(--sonar-ease), color var(--sonar-ease);
+  transition: background-color var(--sonar-wash-ease), color var(--sonar-wash-ease);
 }
-.sonar-icon-btn:hover {
-  background-color: var(--background-modifier-hover);
-  color: var(--text-normal);
+/* mv-kit §6: bare :hover on a phone-reachable control leaves a stuck wash
+ * after a tap — touch has no pointer to leave. Gated to pointer devices. */
+@media (hover: hover) {
+  .sonar-icon-btn:hover {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
+  }
 }
 /* The icon lives in an inner span (.sonar-icon-btn__glyph), never directly on
  * the <button> — a direct SVG child of a native button gets its width
@@ -160,14 +178,17 @@
   font-size: var(--font-ui-smaller);
   cursor: pointer;
   box-shadow: none;
-  transition: background-color var(--sonar-ease), color var(--sonar-ease);
+  transition: background-color var(--sonar-wash-ease), color var(--sonar-wash-ease);
 }
 .sonar-input-clear.is-visible {
   display: flex;
 }
-.sonar-input-clear:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
+/* mv-kit §6: gated, see the .sonar-icon-btn:hover comment above. */
+@media (hover: hover) {
+  .sonar-input-clear:hover {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+  }
 }
 
 /* Dedicated close button, top-right of the header. */
@@ -197,11 +218,14 @@
   font-size: var(--font-ui-small);
   cursor: pointer;
   box-shadow: none;
-  transition: background-color var(--sonar-ease), color var(--sonar-ease);
+  transition: background-color var(--sonar-wash-ease), color var(--sonar-wash-ease);
 }
-.sonar-chip:hover {
-  background-color: var(--background-modifier-hover);
-  color: var(--text-normal);
+/* mv-kit §6: gated, see the .sonar-icon-btn:hover comment above. */
+@media (hover: hover) {
+  .sonar-chip:hover {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
+  }
 }
 .sonar-chip.is-active {
   background-color: var(--background-modifier-hover);
@@ -230,8 +254,11 @@
   width: 12px;
   height: 12px;
 }
-.sonar-chip__clear:hover {
-  opacity: 1;
+/* mv-kit §6: gated, see the .sonar-icon-btn:hover comment above. */
+@media (hover: hover) {
+  .sonar-chip__clear:hover {
+    opacity: 1;
+  }
 }
 
 /* ---- body: results + preview ---- */
@@ -292,10 +319,13 @@
   padding: var(--size-4-2);
   border-radius: var(--sonar-row-radius);
   cursor: pointer;
-  transition: background-color var(--sonar-ease);
+  transition: background-color var(--sonar-wash-ease);
 }
-.sonar-result:hover {
-  background-color: var(--background-modifier-hover);
+/* mv-kit §6: gated, see the .sonar-icon-btn:hover comment above. */
+@media (hover: hover) {
+  .sonar-result:hover {
+    background-color: var(--background-modifier-hover);
+  }
 }
 .sonar-result.is-selected {
   background-color: var(--background-modifier-active-hover, var(--background-modifier-hover));
