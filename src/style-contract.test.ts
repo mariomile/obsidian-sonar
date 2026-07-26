@@ -92,4 +92,80 @@ describe('mv-kit style contract', () => {
     // the ceiling can only ratchet down.
     expect(importantCount).toBeLessThanOrEqual(16);
   });
+
+  // mv-kit §6 (Elevation & motion depth) — wave 2026-07 dinamica, per
+  // docs/2026-07-mv-kit-audit.md's "§6 — wave 2026-07 dinamica" section.
+  //
+  // "A touch tap must never leave a stuck hover state — plugins must not
+  // fight it with custom :hover outside @media (hover: hover) on
+  // phone-reachable elements." A bare `.sonar-*:hover { ... }` rule at the
+  // stylesheet's top level fires on tap on touch browsers (there is no
+  // pointer to leave, so the visual state "sticks" until an unrelated tap
+  // elsewhere). Every `.sonar-*:hover` selector must therefore sit inside an
+  // `@media (hover: hover)` block. `:focus-visible` is exempt (keyboard-only,
+  // must never be hover-gated) and is excluded by the selector match itself.
+  it('§6: every .sonar-*:hover rule is gated behind @media (hover: hover)', () => {
+    const lines = stripComments(css).split('\n');
+    const violations: string[] = [];
+
+    // Real brace-depth tracking: each open @media records the nesting depth
+    // it was opened at plus whether it is a hover:hover query, and is only
+    // popped when depth unwinds back to that level — so a `.foo:hover { }`
+    // rule's own closing `}` inside the @media doesn't falsely pop it.
+    let depth = 0;
+    const mediaStack: { openedAtDepth: number; isHoverGate: boolean }[] = [];
+
+    lines.forEach((rawLine, idx) => {
+      const line = rawLine.trim();
+      const mediaOpen = /^@media\s*\(([^)]*)\)\s*\{/.exec(line);
+      if (mediaOpen) {
+        mediaStack.push({ openedAtDepth: depth, isHoverGate: /hover:\s*hover/.test(mediaOpen[1] ?? '') });
+      }
+
+      if (/\.sonar-[\w-]+(?:[.:][\w-]+)*:hover\b/.test(line)) {
+        const insideHoverGate = mediaStack.some((m) => m.isHoverGate);
+        if (!insideHoverGate) {
+          violations.push(`line ${idx + 1}: "${line}"`);
+        }
+      }
+
+      const opens = (line.match(/\{/g) ?? []).length;
+      const closes = (line.match(/\}/g) ?? []).length;
+      depth += opens - closes;
+
+      let top = mediaStack.at(-1);
+      while (top !== undefined && depth <= top.openedAtDepth) {
+        mediaStack.pop();
+        top = mediaStack.at(-1);
+      }
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  // mv-kit §6: colour/opacity washes ease with --mv-wash, physical transforms
+  // ease with --mv-lift — the two are not interchangeable. Every `.sonar-*`
+  // hover in this file is a colour/opacity wash (background-color/color/
+  // opacity), so their `transition` declarations must resolve through the
+  // --sonar-wash-ease alias (--mv-wash), never the --sonar-ease alias
+  // (--mv-lift, reserved for a future genuine transform).
+  it('§6: colour/opacity transitions never pair with the --sonar-ease (--mv-lift) alias', () => {
+    const lines = stripComments(css).split('\n');
+    const violations: string[] = [];
+
+    lines.forEach((rawLine, idx) => {
+      const line = rawLine.trim();
+      if (!/^transition:/.test(line)) return;
+      const groups = line.replace(/^transition:\s*/, '').replace(/;$/, '').split(',');
+      for (const group of groups) {
+        const isWashProperty = /^(background-color|color|opacity)\b/.test(group.trim());
+        // Match --sonar-ease but not --sonar-wash-ease (word-boundary guard).
+        if (isWashProperty && /var\(--sonar-ease\)/.test(group)) {
+          violations.push(`line ${idx + 1}: "${group.trim()}"`);
+        }
+      }
+    });
+
+    expect(violations).toEqual([]);
+  });
 });
