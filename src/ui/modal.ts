@@ -142,7 +142,6 @@ const DAY = 86_400_000;
  */
 export class SonarModal extends Modal {
   private inputEl!: HTMLInputElement;
-  private clearBtn!: HTMLButtonElement;
   private chipsEl!: HTMLElement;
   private listEl!: HTMLElement;
   private previewEl!: HTMLElement;
@@ -200,6 +199,11 @@ export class SonarModal extends Modal {
     this.previewComponent.load();
     this.modalEl.addClass('sonar-modal');
     this.contentEl.addClass('sonar-modal__content');
+    // Obsidian's Modal base class auto-injects its own top-right close ×
+    // (rendered as .modal-header-button in current Obsidian versions, formerly
+    // .modal-close-button in older ones — remove both defensively);
+    // Sonar has its own dedicated close button inline in the input row.
+    this.modalEl.querySelector('.modal-close-button, .modal-header-button')?.remove();
     const isSheet = Platform.isPhone || window.innerWidth <= 600;
     this.isSheet = isSheet;
     if (isSheet) {
@@ -208,7 +212,7 @@ export class SonarModal extends Modal {
       this.contentEl.createDiv({ cls: 'sonar-sheet-grabber' });
     }
 
-    // Input row: search icon · [input + inline clear] · dedicated close ×.
+    // Input row: search icon · input · dedicated close ×.
     const inputRow = this.contentEl.createDiv({ cls: 'sonar-input-row' });
     setIcon(inputRow.createDiv({ cls: 'sonar-input-row__icon' }), 'search');
 
@@ -216,16 +220,6 @@ export class SonarModal extends Modal {
     this.inputEl = inputWrap.createEl('input', {
       cls: 'sonar-input',
       attr: { type: 'text', placeholder: 'Search your vault…', spellcheck: 'false' },
-    });
-    this.clearBtn = inputWrap.createEl('button', {
-      cls: 'sonar-input-clear',
-      text: 'Clear',
-      attr: { 'aria-label': 'Clear search' },
-    });
-    this.clearBtn.addEventListener('click', () => {
-      this.inputEl.value = '';
-      this.inputEl.focus();
-      this.onInput('');
     });
 
     // Phone-only: a single funnel that reveals the filter chips, so the sheet's
@@ -587,7 +581,6 @@ export class SonarModal extends Modal {
 
   private onInput(value: string): void {
     this.raw = value;
-    this.clearBtn.toggleClass('is-visible', value.length > 0);
     const { sigil, stripped } = parseSigil(value);
     const next = sigil === '' ? null : this.modeList.find((m) => m.sigil === sigil) ?? null;
     this.stripped = stripped;

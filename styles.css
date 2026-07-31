@@ -138,7 +138,6 @@
   font-size: var(--font-ui-medium);
   color: var(--text-normal);
   padding: 0;
-  padding-right: 52px; /* room for the inline "Clear" button */
 }
 /* No focus indicator at all: !important defeats theme/core :focus-visible rings
  * that would otherwise draw a box around the flat search field. */
@@ -159,36 +158,6 @@
 }
 .sonar-input::placeholder {
   color: var(--text-faint);
-}
-
-/* Inline "Clear" text button — only visible while there's a query. No permanent
- * surface: just the label, muted, with a subtle hover. */
-.sonar-input-clear {
-  position: absolute;
-  right: 0;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  height: 22px;
-  padding: 0 var(--size-4-2);
-  border: none;
-  border-radius: var(--radius-s);
-  background: transparent;
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  cursor: pointer;
-  box-shadow: none;
-  transition: background-color var(--sonar-wash-ease), color var(--sonar-wash-ease);
-}
-.sonar-input-clear.is-visible {
-  display: flex;
-}
-/* mv-kit §6: gated, see the .sonar-icon-btn:hover comment above. */
-@media (hover: hover) {
-  .sonar-input-clear:hover {
-    background: var(--background-modifier-hover);
-    color: var(--text-normal);
-  }
 }
 
 /* Dedicated close button, top-right of the header. */
