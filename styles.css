@@ -594,6 +594,35 @@ body.is-phone .modal-container:has(.sonar-modal),
 .modal-container:has(.sonar-modal.is-narrow) {
   align-items: flex-end;
 }
+/* Pull-to-search variant (`main.ts` passes `pullOpened: true` — see
+ * pull-to-search.ts): the gesture that opened this sheet pulled DOWN from the
+ * top of the note, so the sheet drops in from the top instead of rising from
+ * the bottom — the entrance continues the same downward line the drag
+ * indicator started, rather than reversing direction. Every other entry point
+ * (ribbon icon, command) keeps the standard bottom rise above; this only
+ * fires for the one trigger where direction continuity matters. Higher
+ * specificity than the bottom-anchor rule above wins without !important. */
+body.is-phone .modal-container:has(.sonar-modal--pull-open),
+.modal-container:has(.sonar-modal.is-narrow.sonar-modal--pull-open) {
+  align-items: flex-start;
+}
+.sonar-modal.is-narrow.sonar-modal--pull-open {
+  border-radius: 0 0 var(--radius-l, 16px) var(--radius-l, 16px);
+  animation-name: sonar-sheet-drop;
+}
+@keyframes sonar-sheet-drop {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sonar-modal.is-narrow.sonar-modal--pull-open {
+    animation: none;
+  }
+}
 .is-phone .sonar-modal__content,
 .sonar-modal.is-narrow .sonar-modal__content {
   height: 100%;
@@ -638,6 +667,42 @@ body.is-phone .modal-container .sonar-modal.sonar-modal.sonar-modal {
  * small gap beneath it. */
 .is-phone .sonar-input-row {
   padding-top: var(--size-4-2);
+}
+/* Pull-to-search live indicator (pull-to-search.ts): sits above everything,
+ * hidden until the gesture starts. `transform`/`opacity` are driven directly
+ * from JS on every touchmove (no transition while tracking, matching the
+ * sheet's own dismiss-drag) so it tracks the finger with zero lag; a
+ * transition is applied only for the settle/cancel snap. `is-armed` marks the
+ * point the drag has passed the trigger threshold. */
+.sonar-pull-indicator {
+  position: fixed;
+  top: env(safe-area-inset-top, 0px);
+  left: 50%;
+  z-index: var(--layer-modal, 70);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-top: var(--size-4-2);
+  border-radius: 50%;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-s);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(-8px) scale(0.5);
+}
+.sonar-pull-indicator__glyph {
+  display: flex;
+}
+.sonar-pull-indicator__glyph svg {
+  width: 18px;
+  height: 18px;
+}
+.sonar-pull-indicator.is-armed {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
 }
 /* Separate the in-input "Clear" from the sheet's close × so they aren't an
  * accidental double-tap target on a phone. */

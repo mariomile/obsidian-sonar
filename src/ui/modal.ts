@@ -185,6 +185,11 @@ export class SonarModal extends Modal {
   constructor(
     app: App,
     private readonly deps: ModalDeps,
+    /** Set when opened by the mobile pull-to-search gesture — the sheet then
+     *  drops in from the top instead of rising from the bottom, continuing
+     *  the same downward line the drag indicator started (see styles.css's
+     *  `.sonar-modal--pull-open`). */
+    private readonly pullOpened = false,
   ) {
     super(app);
     this.titleOnly = lastFilters.titleOnly;
@@ -208,6 +213,7 @@ export class SonarModal extends Modal {
     this.isSheet = isSheet;
     if (isSheet) {
       this.modalEl.addClass('is-narrow');
+      if (this.pullOpened) this.modalEl.addClass('sonar-modal--pull-open');
       // Grab handle: the visual cue that the sheet is a drag-to-dismiss surface.
       this.contentEl.createDiv({ cls: 'sonar-sheet-grabber' });
     }

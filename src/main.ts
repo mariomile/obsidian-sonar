@@ -89,7 +89,7 @@ export default class SonarPlugin extends Plugin {
     });
     this.addRibbonIcon('hi-search', 'Sonar: search vault', () => this.openModal());
     this.addSettingTab(new SonarSettingTab(this.app, this));
-    registerPullToSearch(this, () => this.settings.pullToSearchEnabled, () => this.openModal());
+    registerPullToSearch(this, () => this.settings.pullToSearchEnabled, () => this.openModal(true));
 
     this.service.start((ref) => this.registerEvent(ref));
     this.frecency.start((ref) => this.registerEvent(ref), () => Date.now());
@@ -124,7 +124,7 @@ export default class SonarPlugin extends Plugin {
     this.extractor?.dispose();
   }
 
-  private openModal(): void {
+  private openModal(pullOpened = false): void {
     new SonarModal(this.app, {
       registry: this.registry,
       service: this.service,
@@ -137,7 +137,7 @@ export default class SonarPlugin extends Plugin {
         new CaptureMode((text) => appendCapture(this.app, text, Date.now()), close),
         new IntentMode(() => this.exoAvailable(), (q) => askExo(q, 'sonar-intent')),
       ],
-    }).open();
+    }, pullOpened).open();
   }
 
   /** First hotkey label for a command id, or undefined. `hotkeyManager` isn't
