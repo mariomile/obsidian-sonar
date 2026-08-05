@@ -213,9 +213,14 @@ export class SonarModal extends Modal {
     this.isSheet = isSheet;
     if (isSheet) {
       this.modalEl.addClass('is-narrow');
-      if (this.pullOpened) this.modalEl.addClass('sonar-modal--pull-open');
-      // Grab handle: the visual cue that the sheet is a drag-to-dismiss surface.
-      this.contentEl.createDiv({ cls: 'sonar-sheet-grabber' });
+      if (this.pullOpened) {
+        this.modalEl.addClass('sonar-modal--pull-open');
+      } else {
+        // Grab handle: the visual cue that the sheet is a drag-to-dismiss
+        // surface. The pull-open card gets none — it isn't a bottom sheet, and
+        // a handle would promise the wrong gesture.
+        this.contentEl.createDiv({ cls: 'sonar-sheet-grabber' });
+      }
     }
 
     // Input row: search icon · input · dedicated close ×.
@@ -295,11 +300,17 @@ export class SonarModal extends Modal {
   }
 
   /** Native-style drag-to-dismiss for the phone / narrow sheet: dragging the
-   *  header (anything outside the scrolling results list) downward past a
-   *  threshold slides the sheet off-screen and closes it; a shorter drag snaps
-   *  back. The results list keeps its own vertical scroll. */
+   *  header (anything outside the scrolling results list) past a threshold
+   *  slides the surface off-screen and closes it; a shorter drag snaps back.
+   *  The results list keeps its own vertical scroll.
+   *
+   *  Direction follows the surface: the bottom sheet leaves downward, the
+   *  pull-open card (anchored to the top) leaves upward. Dragging the *other*
+   *  way does nothing in either case. */
   private setupSheetGestures(): void {
     const settle = 'transform 220ms cubic-bezier(0.32, 0.72, 0, 1)';
+    /** +1 = dismisses downward (sheet), -1 = upward (top-anchored card). */
+    const exit = this.pullOpened ? -1 : 1;
     let startY = 0;
     let dy = 0;
     let dragging = false;
@@ -318,8 +329,8 @@ export class SonarModal extends Modal {
       const touch = e.touches[0];
       if (!dragging || !touch) return;
       dy = touch.clientY - startY;
-      if (dy <= 0) {
-        this.modalEl.style.transform = '';
+      if (dy * exit <= 0) {
+        this.modalEl.style.transform = ''; // dragged against the exit direction
         return;
       }
       e.preventDefault();
@@ -329,8 +340,8 @@ export class SonarModal extends Modal {
       if (!dragging) return;
       dragging = false;
       this.modalEl.style.transition = settle;
-      if (dy > 110) {
-        this.modalEl.style.transform = 'translateY(100%)';
+      if (dy * exit > 110) {
+        this.modalEl.style.transform = `translateY(${exit * 100}%)`;
         window.setTimeout(() => this.close(), 200);
       } else {
         this.modalEl.style.transform = '';

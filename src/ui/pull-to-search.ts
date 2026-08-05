@@ -5,8 +5,13 @@ const TRIGGER_THRESHOLD_PX = 90;
 /** Indicator reaches full opacity/scale at this fraction of the threshold, so
  *  it's clearly "armed" a little before release actually commits. */
 const ARMED_AT = 0.75;
-const SETTLE =
+/** Spring-back when the pull is abandoned. */
+const CANCEL_EASE =
   'transform 220ms cubic-bezier(0.32, 0.72, 0, 1), opacity 180ms ease, background-color 140ms ease, color 140ms ease';
+/** Hand-off when the pull commits: the card drops into the very spot the
+ *  indicator occupies, so it clears fast and expands rather than travelling
+ *  further down into a collision. */
+const COMMIT_EASE = 'transform 160ms ease-out, opacity 120ms ease-out';
 
 /** The scrollable element for `view`'s current mode — reading and edit mode
  *  each own a different scroll container. */
@@ -27,9 +32,10 @@ function getScroller(view: MarkdownView): HTMLElement | null {
  * pull-to-refresh affordance. A floating indicator tracks the drag 1:1 (set
  * directly from touchmove, like `SonarModal`'s own dismiss-drag) so the
  * gesture reads as continuous rather than a silent threshold with a canned
- * pop at the end. `onTrigger`'s modal then opens with a matching top-drop
- * entrance (`main.ts` passes `pullOpened: true`) so the sheet continues the
- * same downward line the indicator started.
+ * pop at the end. `onTrigger`'s modal then drops in as a height-capped
+ * floating card (`main.ts` passes `pullOpened: true`) landing right where the
+ * indicator sat — a light gesture answered by a light surface, instead of the
+ * full-height sheet the ribbon and command still open.
  *
  * Listens on `document` rather than per-leaf, so it needs no
  * active-leaf-change bookkeeping — each touch re-resolves the current view
@@ -71,25 +77,21 @@ export function registerPullToSearch(
     el.toggleClass('is-armed', progress >= ARMED_AT);
   };
 
-  /** Snap the indicator to its resting state: handed off into the opening
-   *  sheet (`committed`) or springing back because the pull was cancelled. */
+  /** Snap the indicator to its resting state: handed off into the opening card
+   *  (`committed`) or springing back because the pull was cancelled. */
   const settle = (committed: boolean): void => {
     const el = indicatorEl;
     if (!el) return;
-    el.style.transition = SETTLE;
+    el.removeClass('is-armed');
     if (!committed) {
-      el.removeClass('is-armed');
+      el.style.transition = CANCEL_EASE;
       el.style.opacity = '0';
       el.style.transform = 'translateX(-50%) translateY(-8px) scale(0.5)';
       return;
     }
-    el.style.opacity = '1';
-    el.style.transform = 'translateX(-50%) translateY(30px) scale(1.05)';
-    window.setTimeout(() => {
-      el.style.opacity = '0';
-      el.style.transform = 'translateX(-50%) translateY(6px) scale(0.6)';
-      el.removeClass('is-armed');
-    }, 120);
+    el.style.transition = COMMIT_EASE;
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(-50%) translateY(4px) scale(1.5)';
   };
 
   plugin.registerDomEvent(

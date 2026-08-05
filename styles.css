@@ -554,8 +554,8 @@
  * keyboard opens it stays above the fold — the keyboard only covers the lower
  * results and footer, which is the expected mobile-search behaviour.
  */
-.is-phone .sonar-modal,
-.sonar-modal.is-narrow {
+.is-phone .sonar-modal:not(.sonar-modal--pull-open),
+.sonar-modal.is-narrow:not(.sonar-modal--pull-open) {
   width: 100vw !important;
   max-width: 100vw !important;
   /* Bottom sheet: rises from the screen bottom up to just below the status bar /
@@ -590,31 +590,80 @@
 }
 /* Anchor the sheet to the bottom of the screen so it rises from there; overrides
  * the Spotlight-style top alignment used on desktop. */
-body.is-phone .modal-container:has(.sonar-modal),
-.modal-container:has(.sonar-modal.is-narrow) {
+body.is-phone .modal-container:has(.sonar-modal:not(.sonar-modal--pull-open)),
+.modal-container:has(.sonar-modal.is-narrow:not(.sonar-modal--pull-open)) {
   align-items: flex-end;
 }
-/* Pull-to-search variant (`main.ts` passes `pullOpened: true` — see
- * pull-to-search.ts): the gesture that opened this sheet pulled DOWN from the
- * top of the note, so the sheet drops in from the top instead of rising from
- * the bottom — the entrance continues the same downward line the drag
- * indicator started, rather than reversing direction. Every other entry point
- * (ribbon icon, command) keeps the standard bottom rise above; this only
- * fires for the one trigger where direction continuity matters. Higher
- * specificity than the bottom-anchor rule above wins without !important. */
-body.is-phone .modal-container:has(.sonar-modal--pull-open),
+/* ---- pull-to-search variant: a floating top card, not a sheet ----
+ * `main.ts` passes `pullOpened: true` (see pull-to-search.ts) for the one
+ * trigger that starts with a short downward drag from the top of a note. A
+ * full-height sheet is the wrong *shape* for that gesture, not just the wrong
+ * direction: a light 90px pull promises a light response. So this variant
+ * drops in as a height-capped card inset from every edge, leaving the note
+ * visible behind it — the surface Craft's Quick Open uses. Every other entry
+ * point (ribbon icon, command) keeps the full-height bottom sheet above.
+ *
+ * Crucially this variant adds NO new `!important` (the style-contract ratchet
+ * only moves down). It doesn't need one: the sheet's `!important` block now
+ * carries `:not(.sonar-modal--pull-open)`, so it simply never matches the
+ * card, and what's left to outrank is Obsidian core's own `.modal` defaults —
+ * plain declarations at (0,1,0) that merely load after us. Ordinary
+ * specificity beats those. Where a theme *does* state an `!important` opinion
+ * on phone-modal width (Cosmos/Cupertino insets every one), the card yields
+ * to it on purpose: mv-kit's theme-as-override rule, and that inset is the
+ * very shape this variant wants anyway. The full-bleed sheet has to fight it;
+ * a card agrees with it. */
+body.is-phone .modal-container:has(.sonar-modal.sonar-modal--pull-open),
 .modal-container:has(.sonar-modal.is-narrow.sonar-modal--pull-open) {
   align-items: flex-start;
 }
-.sonar-modal.is-narrow.sonar-modal--pull-open {
-  border-radius: 0 0 var(--radius-l, 16px) var(--radius-l, 16px);
-  animation-name: sonar-sheet-drop;
+body.is-phone .modal-container .sonar-modal.is-narrow.sonar-modal--pull-open,
+.modal-container .sonar-modal.is-narrow.sonar-modal--pull-open {
+  /* Side/top gutter and the height ceiling. The cap keeps the card clear of
+   * the on-screen keyboard (which the pull always raises, since the input
+   * autofocuses) while still showing roughly twice the rows Craft does —
+   * `dvh` so it tracks whatever viewport the WebView reports. */
+  --sonar-pull-inset: var(--size-4-3, 12px);
+  --sonar-pull-max-h: 58dvh;
+  width: calc(100vw - 2 * var(--sonar-pull-inset));
+  max-width: calc(100vw - 2 * var(--sonar-pull-inset));
+  /* Height follows content up to the cap, so a 3-result query yields a short
+   * card instead of a tall one padded with dead space. */
+  height: auto;
+  max-height: var(--sonar-pull-max-h);
+  margin: calc(env(safe-area-inset-top, 0px) + var(--sonar-pull-inset)) auto 0;
+  border: var(--border-width) solid var(--background-modifier-border);
+  border-radius: var(--radius-l, 16px);
+  /* Declared in full rather than as `animation-name`: the sheet rule that
+   * carried the shared duration/easing no longer matches this variant.
+   * mv-kit §3 tokens with canonical fallbacks, as there. */
+  animation: sonar-card-drop var(--cosmos-t-panel, 300ms) var(--cosmos-native, cubic-bezier(0.32, 0.72, 0, 1));
 }
-@keyframes sonar-sheet-drop {
+/* The flex column has to cap too, or `.sonar-body`'s `flex: 1; min-height: 0`
+ * has no bounded box to shrink against and `.sonar-results` never scrolls. */
+.sonar-modal.sonar-modal--pull-open .sonar-modal__content {
+  height: auto;
+  max-height: var(--sonar-pull-max-h);
+}
+/* No grabber on this variant (modal.ts skips it — a card is not a drag-to-
+ * dismiss bottom sheet), so the input row carries its own top breathing room
+ * again, and the footer no longer sits against the home indicator. */
+.sonar-modal--pull-open .sonar-input-row {
+  padding-top: var(--size-4-3);
+}
+.is-phone .sonar-modal--pull-open .sonar-footer {
+  padding-bottom: var(--size-4-2);
+}
+/* A short drop plus a fade — the card is already near the top, so throwing it
+ * in from a full height off-screen would read as slower, not smoother. Travel
+ * stays downward to continue the line the pull indicator started. */
+@keyframes sonar-card-drop {
   from {
-    transform: translateY(-100%);
+    opacity: 0;
+    transform: translateY(-40px);
   }
   to {
+    opacity: 1;
     transform: translateY(0);
   }
 }
@@ -635,7 +684,7 @@ body.is-phone .modal-container:has(.sonar-modal--pull-open),
  * mere tie would lose on source order. The tripled `.sonar-modal` is a deliberate
  * specificity bump to (0,5,1) — not a typo — so the search sheet stays
  * edge-to-edge regardless of theme. Margin/height are already won above. */
-body.is-phone .modal-container .sonar-modal.sonar-modal.sonar-modal {
+body.is-phone .modal-container .sonar-modal.sonar-modal.sonar-modal:not(.sonar-modal--pull-open) {
   width: 100vw !important;
   max-width: 100vw !important;
 }
