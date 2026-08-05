@@ -37,6 +37,11 @@ describe('parseSettings', () => {
     expect(parseSettings({ indexHtml: 0 }).indexHtml).toBe(false);
   });
 
+  it('defaults pullToSearchEnabled to true and accepts an override', () => {
+    expect(parseSettings({}).pullToSearchEnabled).toBe(true);
+    expect(parseSettings({ pullToSearchEnabled: false }).pullToSearchEnabled).toBe(false);
+  });
+
   it('defaults bodyFuzzy to on-sparse and rejects unknown values', () => {
     expect(parseSettings({}).bodyFuzzy).toBe('on-sparse');
     expect(parseSettings({ bodyFuzzy: 'always' }).bodyFuzzy).toBe('always');

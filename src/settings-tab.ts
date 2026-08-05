@@ -101,6 +101,18 @@ export class SonarSettingTab extends PluginSettingTab {
         }),
       );
 
+    new Setting(containerEl).setName('Mobile').setHeading();
+
+    new Setting(containerEl)
+      .setName('Pull down to search')
+      .setDesc('While a note is scrolled to its top, pulling down opens Sonar (mobile only).')
+      .addToggle((t) =>
+        t.setValue(s.pullToSearchEnabled).onChange(async (v) => {
+          s.pullToSearchEnabled = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
     new Setting(containerEl).setName('HTTP API').setHeading();
 
     new Setting(containerEl)

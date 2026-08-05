@@ -15,6 +15,7 @@ import { CommandMode } from './ui/modes/command-mode.ts';
 import { CaptureMode } from './ui/modes/capture-mode.ts';
 import { IntentMode } from './ui/modes/intent-mode.ts';
 import { appendCapture } from './service/capture.ts';
+import { registerPullToSearch } from './ui/pull-to-search.ts';
 
 // Huge Icons (hugeicons.com, free/MIT, Stroke Rounded, 24x24 grid) — addIcon()
 // always wraps content in a fixed viewBox="0 0 100 100", so a 4.166667x scale
@@ -88,6 +89,7 @@ export default class SonarPlugin extends Plugin {
     });
     this.addRibbonIcon('hi-search', 'Sonar: search vault', () => this.openModal());
     this.addSettingTab(new SonarSettingTab(this.app, this));
+    registerPullToSearch(this, () => this.settings.pullToSearchEnabled, () => this.openModal());
 
     this.service.start((ref) => this.registerEvent(ref));
     this.frecency.start((ref) => this.registerEvent(ref), () => Date.now());

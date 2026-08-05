@@ -28,8 +28,12 @@
   --sonar-wash-ease: var(--cosmos-t-fast, 140ms) var(--mv-wash, cubic-bezier(0.25, 1, 0.5, 1));
   --sonar-mark: hsla(var(--interactive-accent-hsl, 220 70% 60%), 1);
   /* Result thumbnail: a note preview is rendered at `size / scale` px wide, then
-   * CSS-scaled down into a `size`-square box. Render width = 40 / 0.125 = 320px. */
+   * CSS-scaled down into a `size`-wide, `height`-tall rectangular box (taller
+   * than wide — reads as a note card, not an icon tile). Render width = 40 /
+   * 0.125 = 320px; only width feeds the render-width math, height just clips
+   * more or less of the rendered top of the note. */
   --sonar-thumb-size: 40px;
+  --sonar-thumb-height: 54px;
   --sonar-thumb-scale: 0.125;
   width: 880px;
   max-width: 94vw;
@@ -319,7 +323,7 @@
   position: relative;
   flex: none;
   width: var(--sonar-thumb-size);
-  height: var(--sonar-thumb-size);
+  height: var(--sonar-thumb-height);
   border-radius: var(--radius-s);
   overflow: hidden;
   /* No border — on a long list the outline reads as noise. A faint fill is
@@ -358,7 +362,7 @@
 /* Image results: fill the box with the image itself rather than a text render. */
 .sonar-thumb__inner.is-image {
   width: var(--sonar-thumb-size);
-  height: var(--sonar-thumb-size);
+  height: var(--sonar-thumb-height);
   transform: none;
 }
 .sonar-thumb__inner.is-image img {
@@ -728,6 +732,7 @@ body.is-phone .modal-container .sonar-modal.sonar-modal.sonar-modal {
 .is-phone .sonar-modal,
 .sonar-modal.is-narrow {
   --sonar-thumb-size: 48px;
+  --sonar-thumb-height: 64px;
   --sonar-thumb-scale: 0.15;
 }
 /* Comfortable tap targets on the phone sheet: the close × and the filter chips
