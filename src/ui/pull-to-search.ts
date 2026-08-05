@@ -4,10 +4,10 @@ import { MarkdownView, Platform, type Plugin } from 'obsidian';
  *  is already fading by the time the pull registers as deliberate. */
 const OPEN_AT_PX = 8;
 /** Travel at which the entrance reaches full opacity. */
-const FULL_AT_PX = 130;
+const FULL_AT_PX = 110;
 /** Travel past which releasing completes rather than reverts. Below `FULL_AT`
  *  on purpose: a short flick should commit without having to drag all the way. */
-const COMMIT_AT_PX = 65;
+const COMMIT_AT_PX = 55;
 
 /** The surface being pulled into view. Its opacity is driven continuously from
  *  the drag; release either finishes it or takes it back off. */

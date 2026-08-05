@@ -175,7 +175,12 @@ export class SonarModal extends Modal {
   /** Set while a pull gesture is driving the entrance: the surface is mounted
    *  but its opacity belongs to the finger, not to a CSS animation. */
   private entranceActive = false;
+  private closing = false;
   private bgEl: HTMLElement | null = null;
+  /** Committing the entrance, and dismissing it, are both quick — the pull has
+   *  already carried most of the transition, so these only finish the job. */
+  private static readonly SETTLE_MS = 120;
+  private static readonly EXIT_MS = 110;
   /** Each entrance-driven element mapped to the opacity it settles at, so
    *  progress scales against its real resting value rather than 1. */
   private readonly entranceTargets = new Map<HTMLElement, number>();
@@ -351,24 +356,41 @@ export class SonarModal extends Modal {
   /** Finish the entrance, then focus — the keyboard rises once the panel has
    *  settled, as Craft's does, rather than racing the fade. */
   completeEntrance(): void {
-    if (!this.entranceActive) return;
-    this.entranceActive = false;
-    this.settleEntrance(1, () => this.inputEl.focus());
-  }
-
-  /** Take the entrance back off and close. Fading out first avoids the flash
-   *  of an abandoned pull snapping straight to nothing. */
-  cancelEntrance(): void {
+    // No drag entrance to finish on a tablet-width layout, where the gesture
+    // still runs but the card variant doesn't apply — focus is owed either way.
     if (!this.entranceActive) {
-      this.close();
+      this.inputEl.focus();
       return;
     }
     this.entranceActive = false;
-    this.settleEntrance(0, () => this.close());
+    this.settleEntrance(1, SonarModal.SETTLE_MS, () => this.inputEl.focus());
   }
 
-  private settleEntrance(to: number, done: () => void): void {
-    const ms = 160;
+  /** Take the entrance back off. `close` handles the fade. */
+  cancelEntrance(): void {
+    this.entranceActive = false;
+    this.close();
+  }
+
+  /**
+   * The pull card leaves the way it arrived: fading in place. Obsidian's
+   * mobile modals slide *downward* on dismiss, which is right for a bottom
+   * sheet and wrong for a panel anchored at the top — it read as the bar
+   * falling out of the screen. Fading to zero before handing over to
+   * `super.close()` means whatever core animates afterwards happens on an
+   * already-invisible element.
+   */
+  close(): void {
+    if (!this.pullOpened || this.closing) {
+      super.close();
+      return;
+    }
+    this.closing = true;
+    this.entranceActive = false;
+    this.settleEntrance(0, SonarModal.EXIT_MS, () => super.close());
+  }
+
+  private settleEntrance(to: number, ms: number, done: () => void): void {
     for (const el of this.entranceTargets.keys()) {
       el.style.transition = `opacity ${ms}ms ease-out`;
     }
@@ -419,8 +441,14 @@ export class SonarModal extends Modal {
       dragging = false;
       this.modalEl.style.transition = settle;
       if (dy * exit > 110) {
-        this.modalEl.style.transform = `translateY(${exit * 100}%)`;
-        window.setTimeout(() => this.close(), 200);
+        // The card fades from wherever the drag left it; only the bottom sheet
+        // throws itself off-screen, which is what a bottom sheet should do.
+        if (exit > 0) {
+          this.modalEl.style.transform = 'translateY(100%)';
+          window.setTimeout(() => this.close(), 200);
+        } else {
+          this.close();
+        }
       } else {
         this.modalEl.style.transform = '';
       }

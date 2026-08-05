@@ -639,7 +639,16 @@ body.is-phone .modal-container .sonar-modal.is-narrow.sonar-modal--pull-open,
   height: auto;
   max-height: var(--sonar-pull-max-h);
   margin: calc(env(safe-area-inset-top, 0px) + var(--sonar-pull-inset)) auto 0;
-  border: var(--border-width) solid var(--background-modifier-border);
+  /* Glass, not a solid slab: the note stays legible underneath, which is what
+   * makes this read as a panel over your document rather than a new screen.
+   * mv-kit §3 — consume Cosmos's glass trio with canonical fallbacks, never
+   * define them. `-webkit-` first because Obsidian mobile is WebKit. None of
+   * the card's structural children paint a background of their own, so the
+   * translucency carries all the way through. */
+  background: var(--cosmos-glass-surface, color-mix(in srgb, var(--background-primary) 78%, transparent));
+  -webkit-backdrop-filter: var(--cosmos-glass-blur, blur(18px) saturate(115%));
+  backdrop-filter: var(--cosmos-glass-blur, blur(18px) saturate(115%));
+  border: var(--cosmos-glass-outline, 1px solid color-mix(in srgb, var(--text-muted) 16%, transparent));
   border-radius: var(--radius-l, 16px);
   /* No entrance animation declared here on purpose: modal.ts mounts this
    * variant at opacity 0 and hands the value to the pull gesture, so a CSS
