@@ -624,7 +624,7 @@ body.is-phone .modal-container .sonar-modal.is-narrow.sonar-modal--pull-open,
    * autofocuses) while still showing roughly twice the rows Craft does —
    * `dvh` so it tracks whatever viewport the WebView reports. */
   --sonar-pull-inset: var(--size-4-3, 12px);
-  --sonar-pull-max-h: 58dvh;
+  --sonar-pull-max-h: 50dvh;
   width: calc(100vw - 2 * var(--sonar-pull-inset));
   max-width: calc(100vw - 2 * var(--sonar-pull-inset));
   /* Height follows content up to the cap, so a 3-result query yields a short
@@ -637,7 +637,7 @@ body.is-phone .modal-container .sonar-modal.is-narrow.sonar-modal--pull-open,
   /* Declared in full rather than as `animation-name`: the sheet rule that
    * carried the shared duration/easing no longer matches this variant.
    * mv-kit §3 tokens with canonical fallbacks, as there. */
-  animation: sonar-card-drop var(--cosmos-t-panel, 300ms) var(--cosmos-native, cubic-bezier(0.32, 0.72, 0, 1));
+  animation: sonar-card-fade var(--cosmos-t-panel, 300ms) var(--cosmos-native, cubic-bezier(0.32, 0.72, 0, 1));
 }
 /* The flex column has to cap too, or `.sonar-body`'s `flex: 1; min-height: 0`
  * has no bounded box to shrink against and `.sonar-results` never scrolls. */
@@ -654,17 +654,17 @@ body.is-phone .modal-container .sonar-modal.is-narrow.sonar-modal--pull-open,
 .is-phone .sonar-modal--pull-open .sonar-footer {
   padding-bottom: var(--size-4-2);
 }
-/* A short drop plus a fade — the card is already near the top, so throwing it
- * in from a full height off-screen would read as slower, not smoother. Travel
- * stays downward to continue the line the pull indicator started. */
-@keyframes sonar-card-drop {
+/* Opacity only — no travel at all. Measured off a Craft Quick Open screen
+ * recording frame by frame: its panel holds a fixed position for the entire
+ * transition (a given result row sits at the same y in every frame) and only
+ * cross-fades against the view behind it. Nothing slides. Adding travel here
+ * is what made earlier passes read as sluggish rather than calm. */
+@keyframes sonar-card-fade {
   from {
     opacity: 0;
-    transform: translateY(-40px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -716,42 +716,6 @@ body.is-phone .modal-container .sonar-modal.sonar-modal.sonar-modal:not(.sonar-m
  * small gap beneath it. */
 .is-phone .sonar-input-row {
   padding-top: var(--size-4-2);
-}
-/* Pull-to-search live indicator (pull-to-search.ts): sits above everything,
- * hidden until the gesture starts. `transform`/`opacity` are driven directly
- * from JS on every touchmove (no transition while tracking, matching the
- * sheet's own dismiss-drag) so it tracks the finger with zero lag; a
- * transition is applied only for the settle/cancel snap. `is-armed` marks the
- * point the drag has passed the trigger threshold. */
-.sonar-pull-indicator {
-  position: fixed;
-  top: env(safe-area-inset-top, 0px);
-  left: 50%;
-  z-index: var(--layer-modal, 70);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  margin-top: var(--size-4-2);
-  border-radius: 50%;
-  background: var(--background-secondary);
-  color: var(--text-muted);
-  box-shadow: var(--shadow-s);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(-50%) translateY(-8px) scale(0.5);
-}
-.sonar-pull-indicator__glyph {
-  display: flex;
-}
-.sonar-pull-indicator__glyph svg {
-  width: 18px;
-  height: 18px;
-}
-.sonar-pull-indicator.is-armed {
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
 }
 /* Separate the in-input "Clear" from the sheet's close × so they aren't an
  * accidental double-tap target on a phone. */
