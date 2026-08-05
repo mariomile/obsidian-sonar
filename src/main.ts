@@ -89,7 +89,14 @@ export default class SonarPlugin extends Plugin {
     });
     this.addRibbonIcon('hi-search', 'Sonar: search vault', () => this.openModal());
     this.addSettingTab(new SonarSettingTab(this.app, this));
-    registerPullToSearch(this, () => this.settings.pullToSearchEnabled, () => this.openModal(true));
+    registerPullToSearch(this, () => this.settings.pullToSearchEnabled, () => {
+      const modal = this.openModal(true);
+      return {
+        setProgress: (p) => modal.setEntranceProgress(p),
+        commit: () => modal.completeEntrance(),
+        cancel: () => modal.cancelEntrance(),
+      };
+    });
 
     this.service.start((ref) => this.registerEvent(ref));
     this.frecency.start((ref) => this.registerEvent(ref), () => Date.now());
@@ -124,8 +131,8 @@ export default class SonarPlugin extends Plugin {
     this.extractor?.dispose();
   }
 
-  private openModal(pullOpened = false): void {
-    new SonarModal(this.app, {
+  private openModal(pullOpened = false): SonarModal {
+    const modal = new SonarModal(this.app, {
       registry: this.registry,
       service: this.service,
       fileCatalog: this.fileCatalog,
@@ -137,7 +144,9 @@ export default class SonarPlugin extends Plugin {
         new CaptureMode((text) => appendCapture(this.app, text, Date.now()), close),
         new IntentMode(() => this.exoAvailable(), (q) => askExo(q, 'sonar-intent')),
       ],
-    }, pullOpened).open();
+    }, pullOpened);
+    modal.open();
+    return modal;
   }
 
   /** First hotkey label for a command id, or undefined. `hotkeyManager` isn't

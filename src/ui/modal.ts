@@ -172,6 +172,14 @@ export class SonarModal extends Modal {
    *  `settings.browseSort` rather than the module-scoped `lastFilters`. */
   private sortKey: SortKey;
 
+  /** Set while a pull gesture is driving the entrance: the surface is mounted
+   *  but its opacity belongs to the finger, not to a CSS animation. */
+  private entranceActive = false;
+  private bgEl: HTMLElement | null = null;
+  /** Each entrance-driven element mapped to the opacity it settles at, so
+   *  progress scales against its real resting value rather than 1. */
+  private readonly entranceTargets = new Map<HTMLElement, number>();
+
   private cancelQuery: (() => void) | null = null;
   /** Coalesces bursts of keystrokes into a single query fire. Typing "hello"
    *  should run one search, not five. 150ms is below perceptible latency. */
@@ -215,6 +223,7 @@ export class SonarModal extends Modal {
       this.modalEl.addClass('is-narrow');
       if (this.pullOpened) {
         this.modalEl.addClass('sonar-modal--pull-open');
+        this.beginDragEntrance();
       } else {
         // Grab handle: the visual cue that the sheet is a drag-to-dismiss
         // surface. The pull-open card gets none — it isn't a bottom sheet, and
@@ -294,9 +303,77 @@ export class SonarModal extends Modal {
 
     this.inputEl.addEventListener('input', () => this.onInput(this.inputEl.value));
     this.inputEl.addEventListener('keydown', (e) => this.onKeydown(e));
-    this.inputEl.focus();
+    // A drag entrance defers focus to `completeEntrance`: focusing now would
+    // throw the keyboard up mid-pull, over a panel that is still fading in.
+    if (!this.entranceActive) this.inputEl.focus();
     this.refresh();
     if (isSheet) this.setupSheetGestures();
+  }
+
+  // ---- drag-driven entrance (pull-to-search) ----
+
+  /** Mount the surface invisible and hand its opacity to the gesture. Both the
+   *  panel and Obsidian's backdrop get their animations killed — from here the
+   *  finger is the only thing that moves them.
+   *
+   *  Each element's own settled opacity is captured first and treated as the
+   *  100% mark, rather than assumed to be 1: the backdrop rests at 0.2 (it
+   *  dims, it doesn't black out), so driving it to 1 would render the pull
+   *  five times darker than a normal open. Killing the animation before
+   *  reading is what makes the read return the cascade's value instead of
+   *  whatever frame the fade-in happens to be on. */
+  private beginDragEntrance(): void {
+    this.entranceActive = true;
+    this.bgEl = this.containerEl.querySelector('.modal-bg');
+    for (const el of [this.modalEl, this.bgEl]) {
+      if (!el) continue;
+      el.style.animation = 'none';
+      el.style.transition = 'none';
+      const settled = Number(getComputedStyle(el).opacity);
+      this.entranceTargets.set(el, Number.isFinite(settled) ? settled : 1);
+      el.style.opacity = '0';
+    }
+  }
+
+  /** Drive the entrance from drag progress (0..1). */
+  setEntranceProgress(p: number): void {
+    if (!this.entranceActive) return;
+    this.paintEntrance(Math.max(0, Math.min(p, 1)));
+  }
+
+  /** Apply `p` (0..1) against each element's captured settled opacity. */
+  private paintEntrance(p: number): void {
+    for (const [el, target] of this.entranceTargets) {
+      el.style.opacity = String(p * target);
+    }
+  }
+
+  /** Finish the entrance, then focus — the keyboard rises once the panel has
+   *  settled, as Craft's does, rather than racing the fade. */
+  completeEntrance(): void {
+    if (!this.entranceActive) return;
+    this.entranceActive = false;
+    this.settleEntrance(1, () => this.inputEl.focus());
+  }
+
+  /** Take the entrance back off and close. Fading out first avoids the flash
+   *  of an abandoned pull snapping straight to nothing. */
+  cancelEntrance(): void {
+    if (!this.entranceActive) {
+      this.close();
+      return;
+    }
+    this.entranceActive = false;
+    this.settleEntrance(0, () => this.close());
+  }
+
+  private settleEntrance(to: number, done: () => void): void {
+    const ms = 160;
+    for (const el of this.entranceTargets.keys()) {
+      el.style.transition = `opacity ${ms}ms ease-out`;
+    }
+    this.paintEntrance(to);
+    window.setTimeout(done, ms);
   }
 
   /** Native-style drag-to-dismiss for the phone / narrow sheet: dragging the
@@ -318,6 +395,7 @@ export class SonarModal extends Modal {
     const start = (e: TouchEvent): void => {
       const touch = e.touches[0];
       if (!touch || e.touches.length !== 1) return;
+      if (this.entranceActive) return; // the entrance owns the surface until it settles
       if ((e.target as HTMLElement).closest('.sonar-results')) return; // let the list scroll
       startY = touch.clientY;
       dy = 0;

@@ -62,6 +62,13 @@
 .sonar-modal .modal-close-button {
   display: none;
 }
+/* Sonar never calls setTitle, so `.modal-header` is a zero-height node whose
+ * `.modal-title` is already display:none — but core still gives it a
+ * ~10.5px margin-bottom (measured on the live DOM), which lands as dead space
+ * above the search input. Nothing will ever go in there; collapse it. */
+.sonar-modal .modal-header {
+  display: none;
+}
 
 .sonar-modal__content {
   padding: 0;
@@ -634,10 +641,9 @@ body.is-phone .modal-container .sonar-modal.is-narrow.sonar-modal--pull-open,
   margin: calc(env(safe-area-inset-top, 0px) + var(--sonar-pull-inset)) auto 0;
   border: var(--border-width) solid var(--background-modifier-border);
   border-radius: var(--radius-l, 16px);
-  /* Declared in full rather than as `animation-name`: the sheet rule that
-   * carried the shared duration/easing no longer matches this variant.
-   * mv-kit §3 tokens with canonical fallbacks, as there. */
-  animation: sonar-card-fade var(--cosmos-t-panel, 300ms) var(--cosmos-native, cubic-bezier(0.32, 0.72, 0, 1));
+  /* No entrance animation declared here on purpose: modal.ts mounts this
+   * variant at opacity 0 and hands the value to the pull gesture, so a CSS
+   * keyframe would only fight the finger. See `beginDragEntrance`. */
 }
 /* The flex column has to cap too, or `.sonar-body`'s `flex: 1; min-height: 0`
  * has no bounded box to shrink against and `.sonar-results` never scrolls. */
@@ -653,24 +659,6 @@ body.is-phone .modal-container .sonar-modal.is-narrow.sonar-modal--pull-open,
 }
 .is-phone .sonar-modal--pull-open .sonar-footer {
   padding-bottom: var(--size-4-2);
-}
-/* Opacity only — no travel at all. Measured off a Craft Quick Open screen
- * recording frame by frame: its panel holds a fixed position for the entire
- * transition (a given result row sits at the same y in every frame) and only
- * cross-fades against the view behind it. Nothing slides. Adding travel here
- * is what made earlier passes read as sluggish rather than calm. */
-@keyframes sonar-card-fade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .sonar-modal.is-narrow.sonar-modal--pull-open {
-    animation: none;
-  }
 }
 .is-phone .sonar-modal__content,
 .sonar-modal.is-narrow .sonar-modal__content {
