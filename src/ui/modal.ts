@@ -1058,7 +1058,7 @@ export class SonarModal extends Modal {
     const plugins = (this.app as unknown as {
       plugins?: { plugins?: Record<string, unknown> };
     }).plugins?.plugins;
-    const p = plugins?.['exo'] as ExoApi | undefined;
+    const p = plugins?.['exo-agent'] as ExoApi | undefined;
     return p && typeof p.askExo === 'function' ? p : null;
   }
 

@@ -162,7 +162,7 @@ export default class SonarPlugin extends Plugin {
   /** Whether the Exo plugin is installed and exposes its cross-plugin API. */
   private exoAvailable(): boolean {
     const p = (this.app as unknown as { plugins?: { plugins?: Record<string, { askExo?: unknown }> } })
-      .plugins?.plugins?.['exo'];
+      .plugins?.plugins?.['exo-agent'];
     return typeof p?.askExo === 'function';
   }
 
