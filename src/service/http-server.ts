@@ -1,6 +1,7 @@
 import { Notice } from 'obsidian';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { SearchService } from './search-service.ts';
+import { hitExcerptText } from './hit-mapping.ts';
 
 interface HttpModule {
   createServer(handler: (req: IncomingMessage, res: ServerResponse) => void): Server;
@@ -159,10 +160,10 @@ export class HttpServer {
             // Additive fields (don't break Omnisearch-shape consumers).
             type: h.docType,
             ext: h.path.includes('.') ? h.path.slice(h.path.lastIndexOf('.') + 1).toLowerCase() : '',
-            excerpt: h.excerpt?.text ?? '',
+            excerpt: hitExcerptText(h),
             foundWords: h.matched,
             matches: (h.excerpt?.ranges ?? []).map(([start, end]) => ({
-              match: h.excerpt!.text.slice(start, end),
+              match: hitExcerptText(h).slice(start, end),
               offset: start,
             })),
           })),

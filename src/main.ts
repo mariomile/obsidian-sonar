@@ -16,6 +16,8 @@ import { CaptureMode } from './ui/modes/capture-mode.ts';
 import { IntentMode } from './ui/modes/intent-mode.ts';
 import { appendCapture } from './service/capture.ts';
 import { registerPullToSearch } from './ui/pull-to-search.ts';
+import { publicSearch } from './service/public-search.ts';
+import type { SonarSearchHit } from './types.ts';
 
 // Huge Icons (hugeicons.com, free/MIT, Stroke Rounded, 24x24 grid) — addIcon()
 // always wraps content in a fixed viewBox="0 0 100 100", so a 4.166667x scale
@@ -175,6 +177,15 @@ export default class SonarPlugin extends Plugin {
    *  gate them behind a confirmation. */
   async runAction(id: string): Promise<{ ok: boolean; destructive: boolean }> {
     return this.catalog.run(id);
+  }
+
+  /** Read-only cross-plugin search API (e.g. Exo's tool-surface). Waits (up to
+   *  ~3s) for the initial index build if it hasn't finished yet, then returns
+   *  whatever the keyword engine finds — possibly an empty array. `limit`
+   *  defaults to 20 and is capped at 100; an empty/whitespace query returns
+   *  `[]` without touching the index. */
+  async search(query: string, opts?: { limit?: number }): Promise<SonarSearchHit[]> {
+    return publicSearch(this.service, query, opts);
   }
 
   async saveSettings(): Promise<void> {

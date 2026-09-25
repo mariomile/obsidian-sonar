@@ -71,6 +71,30 @@ The server binds only to `127.0.0.1`, accepts loopback `Host` headers only, and
 does not enable browser CORS. This keeps arbitrary websites and DNS-rebinding
 hosts from reading filenames or note excerpts. The API is disabled by default.
 
+## Cross-plugin API
+
+Other plugins in the vault (Sonar's own suite, or Exo) can reach `SonarPlugin`
+via `app.plugins.plugins['sonar']` and call these directly — no HTTP round
+trip:
+
+```ts
+const sonar = app.plugins.plugins['sonar'];
+
+// Search: waits (up to ~3s) for the index to finish its initial build if it
+// hasn't yet, then returns whatever the keyword engine finds.
+const hits = await sonar.search('project roadmap', { limit: 10 });
+// → [{ path, title, score, excerpt }]
+
+// Commands / actions catalog (used by Exo's tool-surface).
+const actions = sonar.getActions();
+await sonar.runAction(actions[0].id);
+```
+
+`search(query, opts?)` takes an optional `{ limit?: number }` (default 20, max
+100) and returns `[]` for an empty/whitespace query. This is the same engine
+behind the HTTP `/search` endpoint, but with a minimal result shape instead of
+the Omnisearch-compatible one.
+
 ## Privacy
 
 Sonar indexes and searches vault content locally. It sends no note content,
