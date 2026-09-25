@@ -22,6 +22,16 @@ export interface ProviderResult {
   excerpt?: Excerpt;
 }
 
+/** A single result from the public cross-plugin `search()` API — the minimal
+ *  shape a consumer (e.g. Exo) needs to display and open a hit, decoupled
+ *  from Sonar's internal ranking/provider fields. */
+export interface SonarSearchHit {
+  path: string;
+  title: string;
+  score: number;
+  excerpt: string;
+}
+
 /**
  * A pluggable search backend. v1 ships one (keyword); Wave 2 adds a QMD
  * semantic provider. `instant` providers run on every query; `deep` providers
