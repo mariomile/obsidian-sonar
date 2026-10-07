@@ -37,9 +37,9 @@ describe('parseSettings', () => {
     expect(parseSettings({ indexHtml: 0 }).indexHtml).toBe(false);
   });
 
-  it('defaults pullToSearchEnabled to true and accepts an override', () => {
-    expect(parseSettings({}).pullToSearchEnabled).toBe(true);
-    expect(parseSettings({ pullToSearchEnabled: false }).pullToSearchEnabled).toBe(false);
+  it('defaults navbarLongPressEnabled to true and accepts an override', () => {
+    expect(parseSettings({}).navbarLongPressEnabled).toBe(true);
+    expect(parseSettings({ navbarLongPressEnabled: false }).navbarLongPressEnabled).toBe(false);
   });
 
   it('defaults bodyFuzzy to on-sparse and rejects unknown values', () => {

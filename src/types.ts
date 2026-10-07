@@ -49,6 +49,9 @@ export interface SearchProvider {
   fuseWeight?: number;
   isAvailable(): boolean;
   search(raw: string, opts: ProviderSearchOptions): Promise<ProviderResult[]>;
+  /** Optional slower second pass (e.g. excerpts) over results `search` already
+   *  returned, so the list can paint before it finishes. */
+  enrich?(results: ProviderResult[], signal: AbortSignal): Promise<ProviderResult[]>;
 }
 
 export interface ProviderSearchOptions {

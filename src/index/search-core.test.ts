@@ -18,6 +18,7 @@ function buildIndex(notes: NoteSpec[]): InvertedIndex {
     const basename = note.path.replace(/\.md$/, '').split('/').pop()!;
     const { fields, tags } = extractFields({
       basename,
+      path: note.path,
       content: note.content ?? '',
       meta: note.meta ?? {},
     });
@@ -169,5 +170,41 @@ describe('excerptWeights', () => {
     ]);
     const w = excerptWeights(index, ['common', 'rare']);
     expect(w.get('rare')!).toBeGreaterThan(w.get('common')!);
+  });
+});
+
+describe('search — title intent', () => {
+  it('ranks the note whose title IS the query above notes that only mention it a lot', () => {
+    const index = buildIndex([
+      { path: 'Transcripts/Mario Miletta and Rosario.md', content: 'mario miletta '.repeat(40) },
+      { path: 'Transcripts/Mario Miletta career planning.md', content: 'mario miletta '.repeat(30) },
+      { path: 'CRM/People/Mario Miletta.md', content: 'Head of Product.' },
+    ]);
+    expect(paths(index, 'mario miletta')[0]).toBe('CRM/People/Mario Miletta.md');
+  });
+
+  it('treats a hub note (context.md) as titled by its folder', () => {
+    const index = buildIndex([
+      { path: 'Projects/DeepAgent/DeepAgent Metric Tree.md', content: 'deepagent metrics deepagent' },
+      { path: 'Prep/Screening Prep.md', content: 'deepagent '.repeat(20) },
+      { path: 'Projects/DeepAgent/context.md', content: 'Voice agents product. deepagent' },
+    ]);
+    expect(paths(index, 'deepagent')[0]).toBe('Projects/DeepAgent/context.md');
+  });
+
+  it('prefix-matches every typed word, not only the last one', () => {
+    const index = buildIndex([
+      { path: 'Daily/2025-09-28.md', content: 'prod deploy, her feedback' },
+      { path: 'CRM/Companies/Product Heroes.md', content: 'Bootcamp and webinars.' },
+    ]);
+    expect(paths(index, 'prod her')[0]).toBe('CRM/Companies/Product Heroes.md');
+  });
+
+  it('ignores a year in the title when judging an exact title match', () => {
+    const index = buildIndex([
+      { path: 'Knowledge/Finding Jobs via ATS Search.md', content: 'job search tips' },
+      { path: 'Projects/Job Search 2026/context.md', content: 'Pipeline and applications.' },
+    ]);
+    expect(paths(index, 'job search')[0]).toBe('Projects/Job Search 2026/context.md');
   });
 });

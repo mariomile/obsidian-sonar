@@ -24,8 +24,9 @@ export interface SonarSettings {
   /** Sort order for the browse view and typed-search results — the one chip
    *  value that persists across restarts. */
   browseSort: BrowseSort;
-  /** Mobile-only: pulling down while a note is scrolled to its top opens Sonar. */
-  pullToSearchEnabled: boolean;
+  /** Mobile-only: long-pressing the search icon in the bottom navbar opens
+   *  Sonar; a short tap still opens the Quick Switcher. */
+  navbarLongPressEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: SonarSettings = {
@@ -40,7 +41,7 @@ export const DEFAULT_SETTINGS: SonarSettings = {
   showScoreDebug: false,
   bodyFuzzy: 'on-sparse',
   browseSort: 'relevance',
-  pullToSearchEnabled: true,
+  navbarLongPressEnabled: true,
 };
 
 const BROWSE_SORT_VALUES = new Set<BrowseSort>(['relevance', 'created', 'modified', 'viewed']);
@@ -77,6 +78,6 @@ export function parseSettings(data: unknown): SonarSettings {
     browseSort: BROWSE_SORT_VALUES.has(d.browseSort as BrowseSort)
       ? (d.browseSort as BrowseSort)
       : DEFAULT_SETTINGS.browseSort,
-    pullToSearchEnabled: d.pullToSearchEnabled ?? DEFAULT_SETTINGS.pullToSearchEnabled,
+    navbarLongPressEnabled: d.navbarLongPressEnabled ?? DEFAULT_SETTINGS.navbarLongPressEnabled,
   };
 }

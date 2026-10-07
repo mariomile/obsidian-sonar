@@ -3,6 +3,11 @@ export interface FuzzyMatch {
   dist: number;
 }
 
+// Two DP rows reused across calls: the fuzzy scan compares the query against
+// every term, so allocating rows per comparison dominated its cost.
+let prevRow = new Int32Array(64);
+let curRow = new Int32Array(64);
+
 /**
  * Levenshtein distance with an early bail-out: if any DP row's minimum exceeds
  * `max`, the true distance is > max and we return `max + 1`. Terms are short
@@ -14,9 +19,14 @@ export function boundedLevenshtein(a: string, b: string, max: number): number {
   const lb = b.length;
   if (Math.abs(la - lb) > max) return max + 1;
 
-  let prev: number[] = Array.from({ length: lb + 1 }, (_, j) => j);
+  if (prevRow.length <= lb) {
+    prevRow = new Int32Array(lb + 1);
+    curRow = new Int32Array(lb + 1);
+  }
+  let prev = prevRow;
+  let cur = curRow;
+  for (let j = 0; j <= lb; j++) prev[j] = j;
   for (let i = 1; i <= la; i++) {
-    const cur: number[] = new Array<number>(lb + 1);
     cur[0] = i;
     let rowMin = i;
     for (let j = 1; j <= lb; j++) {
@@ -26,9 +36,38 @@ export function boundedLevenshtein(a: string, b: string, max: number): number {
       if (v < rowMin) rowMin = v;
     }
     if (rowMin > max) return max + 1;
+    const swap = prev;
     prev = cur;
+    cur = swap;
   }
   return prev[lb]! <= max ? prev[lb]! : max + 1;
+}
+
+/** Which characters a term contains, folded into 32 bits. */
+function charMask(term: string): number {
+  let m = 0;
+  for (let i = 0; i < term.length; i++) m |= 1 << (term.charCodeAt(i) & 31);
+  return m;
+}
+
+function popcount(x: number): number {
+  x -= (x >>> 1) & 0x55555555;
+  x = (x & 0x33333333) + ((x >>> 2) & 0x33333333);
+  return (((x + (x >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24;
+}
+
+/** Char masks per term list, rebuilt when the list grows (terms are only ever
+ *  inserted, and a reload swaps in a new array). */
+const maskCache = new WeakMap<readonly string[], Uint32Array>();
+
+function masksFor(terms: readonly string[]): Uint32Array {
+  let masks = maskCache.get(terms);
+  if (!masks || masks.length !== terms.length) {
+    masks = new Uint32Array(terms.length);
+    for (let i = 0; i < terms.length; i++) masks[i] = charMask(terms[i]!);
+    maskCache.set(terms, masks);
+  }
+  return masks;
 }
 
 /**
@@ -39,9 +78,15 @@ export function boundedLevenshtein(a: string, b: string, max: number): number {
  */
 export function fuzzyCandidates(target: string, terms: readonly string[], maxDist: number): FuzzyMatch[] {
   const out: FuzzyMatch[] = [];
-  for (const term of terms) {
-    if (term === target) continue;
+  const masks = masksFor(terms);
+  const targetMask = charMask(target);
+  for (let i = 0; i < terms.length; i++) {
+    const term = terms[i]!;
     if (Math.abs(term.length - target.length) > maxDist) continue;
+    // Each edit adds or removes at most two distinct characters, so a term
+    // whose character set differs by more than 2·maxDist can't be close.
+    if (popcount(masks[i]! ^ targetMask) > 2 * maxDist) continue;
+    if (term === target) continue;
     const dist = boundedLevenshtein(target, term, maxDist);
     if (dist <= maxDist) out.push({ term, dist });
   }

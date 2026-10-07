@@ -65,6 +65,27 @@ export class ProviderRegistry {
         sections.set(p.id, { providerId: p.id, label: p.label, fused: p.fused, results });
       }
       onUpdate(this.assemble(sections, opts.limit));
+
+      // Second pass: paint first, then let providers fill in slower details.
+      const enriched = await Promise.all(
+        settled
+          .filter(({ p, results }) => p.enrich && results.length > 0)
+          .map(async ({ p, results }) => {
+            try {
+              return { p, results: await p.enrich!(results, signal) };
+            } catch {
+              return null;
+            }
+          }),
+      );
+      if (signal.aborted) return;
+      let changed = false;
+      for (const e of enriched) {
+        if (!e) continue;
+        sections.set(e.p.id, { providerId: e.p.id, label: e.p.label, fused: e.p.fused, results: e.results });
+        changed = true;
+      }
+      if (changed) onUpdate(this.assemble(sections, opts.limit));
     };
 
     const available = this.providers.filter((p) => p.isAvailable());

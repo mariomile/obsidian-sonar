@@ -22,6 +22,10 @@ export const RANK = {
   proximityWindow: 8,
   phraseBonus: 0.5,
   recencyR: 0.15,
+  /** Title-intent multipliers (search-core): the title is exactly the query,
+   *  or contains every query word. */
+  titleExact: 1.5,
+  titleAll: 0.5,
   recencyHalfLifeDays: 90,
   /** How many top candidates get the proximity/phrase rescoring pass. */
   rescoreTop: 100,
@@ -35,6 +39,10 @@ export interface TermGroup {
   variants: string[];
   /** Group weight multiplier: 1 exact, RANK.prefixWeight, RANK.fuzzyWeight. */
   weight: number;
+  /** The query word this group answers. Exact, prefix and fuzzy groups for one
+   *  word share a key: a doc scores the best of them, and coverage counts
+   *  words, so "jobs" can't count as a second word next to "job". */
+  key?: string;
 }
 
 export interface RankInput {
@@ -59,8 +67,8 @@ export interface ScoredDoc {
 }
 
 interface DocAcc {
-  base: number;
-  groupsMatched: number;
+  /** Best weighted contribution per query word (group key). */
+  byKey: Map<string, number>;
   matched: string[];
   /** Winning-variant body positions per matched term (for proximity/phrase). */
   positions: Map<string, number[]>;
@@ -131,7 +139,8 @@ export function rank(input: RankInput): ScoredDoc[] {
 
   const accum = new Map<number, DocAcc>();
 
-  for (const group of groups) {
+  for (const [g, group] of groups.entries()) {
+    const key = group.key ?? `#${g}`;
     // Best (max) contribution per doc across this group's variants.
     const groupBest = new Map<number, { score: number; term: string; positions: number[] }>();
 
@@ -186,11 +195,11 @@ export function rank(input: RankInput): ScoredDoc[] {
     for (const [docId, best] of groupBest) {
       let acc = accum.get(docId);
       if (!acc) {
-        acc = { base: 0, groupsMatched: 0, matched: [], positions: new Map() };
+        acc = { byKey: new Map(), matched: [], positions: new Map() };
         accum.set(docId, acc);
       }
-      acc.base += best.score * group.weight;
-      acc.groupsMatched++;
+      const weighted = best.score * group.weight;
+      acc.byKey.set(key, Math.max(acc.byKey.get(key) ?? 0, weighted));
       acc.matched.push(best.term);
       if (best.positions.length > 0) acc.positions.set(best.term, best.positions);
     }
@@ -199,11 +208,13 @@ export function rank(input: RankInput): ScoredDoc[] {
   // Finalize: coverage + recency for every candidate.
   const scored: Array<{ docId: number; score: number; acc: DocAcc }> = [];
   for (const [docId, acc] of accum) {
-    const coverage = 1 + RANK.coverage * (acc.groupsMatched - 1);
+    let base = 0;
+    for (const v of acc.byKey.values()) base += v;
+    const coverage = 1 + RANK.coverage * (acc.byKey.size - 1);
     const entryDoc = index.docEntry(docId)!;
     const ageDays = Math.max(0, (now - entryDoc.mtime) / DAY_MS);
     const recency = 1 + RANK.recencyR * Math.exp(-ageDays / RANK.recencyHalfLifeDays);
-    scored.push({ docId, score: acc.base * coverage * recency, acc });
+    scored.push({ docId, score: base * coverage * recency, acc });
   }
 
   scored.sort((a, b) => b.score - a.score);

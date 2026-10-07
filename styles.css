@@ -12,8 +12,12 @@
  */
 
 .sonar-modal {
-  --sonar-radius: var(--radius-l, 12px);
-  --sonar-row-radius: var(--radius-m, 8px);
+  /* Radii follow the active theme's semantic tokens (same approach as Exo):
+   * the modal takes the theme's modal radius, rows and the preview card its
+   * card radius, chips its chip radius. Sonar's old values are the fallbacks. */
+  --sonar-radius: var(--modal-radius, var(--radius-l, 12px));
+  --sonar-row-radius: var(--mv-r-card, var(--radius-m, 8px));
+  --sonar-chip-radius: var(--mv-r-chip, var(--mv-r1, 6px));
   /* mv-kit §3/§6: hover/reveal wash consumes the Cosmos motion tokens with
    * canonical fallbacks (theme-as-override — never define the --cosmos- or
    * --mv- tokens ourselves at :root). Falls back to the same literal values
@@ -87,7 +91,7 @@
   height: 28px;
   padding: 0;
   border: none;
-  border-radius: var(--radius-s);
+  border-radius: var(--clickable-icon-radius, var(--radius-s));
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -190,9 +194,8 @@
   height: 26px;
   padding: 0 10px;
   border: var(--border-width) solid transparent;
-  /* mv-kit §1: chip radius consumes the suite-wide --mv-r1 chip/toolbar
-   * token instead of a hand-picked pixel value. */
-  border-radius: var(--mv-r1, 6px);
+  /* mv-kit §1: chip radius consumes the suite-wide chip token. */
+  border-radius: var(--sonar-chip-radius);
   background: transparent;
   color: var(--text-muted);
   font-size: var(--font-ui-small);
@@ -405,7 +408,7 @@
   color: var(--text-faint);
   padding: 0 var(--size-2-2);
   border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
+  border-radius: var(--sonar-chip-radius);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -561,8 +564,8 @@
  * keyboard opens it stays above the fold — the keyboard only covers the lower
  * results and footer, which is the expected mobile-search behaviour.
  */
-.is-phone .sonar-modal:not(.sonar-modal--pull-open),
-.sonar-modal.is-narrow:not(.sonar-modal--pull-open) {
+.is-phone .sonar-modal,
+.sonar-modal.is-narrow {
   width: 100vw !important;
   max-width: 100vw !important;
   /* Bottom sheet: rises from the screen bottom up to just below the status bar /
@@ -574,7 +577,7 @@
   max-height: 100vh !important;
   max-height: calc(100dvh - env(safe-area-inset-top, 0px)) !important;
   margin: 0 !important;
-  border-radius: var(--radius-l, 16px) var(--radius-l, 16px) 0 0;
+  border-radius: var(--sonar-radius) var(--sonar-radius) 0 0;
   /* mv-kit §3: structural sheet-rise consumes --cosmos-t-panel /
    * --cosmos-native (the exact recipe cosmos-phone.css's own sheet-rise
    * keyframe uses) with canonical fallbacks. */
@@ -597,77 +600,9 @@
 }
 /* Anchor the sheet to the bottom of the screen so it rises from there; overrides
  * the Spotlight-style top alignment used on desktop. */
-body.is-phone .modal-container:has(.sonar-modal:not(.sonar-modal--pull-open)),
-.modal-container:has(.sonar-modal.is-narrow:not(.sonar-modal--pull-open)) {
+body.is-phone .modal-container:has(.sonar-modal),
+.modal-container:has(.sonar-modal.is-narrow) {
   align-items: flex-end;
-}
-/* ---- pull-to-search variant: a floating top card, not a sheet ----
- * `main.ts` passes `pullOpened: true` (see pull-to-search.ts) for the one
- * trigger that starts with a short downward drag from the top of a note. A
- * full-height sheet is the wrong *shape* for that gesture, not just the wrong
- * direction: a light 90px pull promises a light response. So this variant
- * drops in as a height-capped card inset from every edge, leaving the note
- * visible behind it — the surface Craft's Quick Open uses. Every other entry
- * point (ribbon icon, command) keeps the full-height bottom sheet above.
- *
- * Crucially this variant adds NO new `!important` (the style-contract ratchet
- * only moves down). It doesn't need one: the sheet's `!important` block now
- * carries `:not(.sonar-modal--pull-open)`, so it simply never matches the
- * card, and what's left to outrank is Obsidian core's own `.modal` defaults —
- * plain declarations at (0,1,0) that merely load after us. Ordinary
- * specificity beats those. Where a theme *does* state an `!important` opinion
- * on phone-modal width (Cosmos/Cupertino insets every one), the card yields
- * to it on purpose: mv-kit's theme-as-override rule, and that inset is the
- * very shape this variant wants anyway. The full-bleed sheet has to fight it;
- * a card agrees with it. */
-body.is-phone .modal-container:has(.sonar-modal.sonar-modal--pull-open),
-.modal-container:has(.sonar-modal.is-narrow.sonar-modal--pull-open) {
-  align-items: flex-start;
-}
-body.is-phone .modal-container .sonar-modal.is-narrow.sonar-modal--pull-open,
-.modal-container .sonar-modal.is-narrow.sonar-modal--pull-open {
-  /* Side/top gutter and the height ceiling. The cap keeps the card clear of
-   * the on-screen keyboard (which the pull always raises, since the input
-   * autofocuses) while still showing roughly twice the rows Craft does —
-   * `dvh` so it tracks whatever viewport the WebView reports. */
-  --sonar-pull-inset: var(--size-4-3, 12px);
-  --sonar-pull-max-h: 50dvh;
-  width: calc(100vw - 2 * var(--sonar-pull-inset));
-  max-width: calc(100vw - 2 * var(--sonar-pull-inset));
-  /* Height follows content up to the cap, so a 3-result query yields a short
-   * card instead of a tall one padded with dead space. */
-  height: auto;
-  max-height: var(--sonar-pull-max-h);
-  margin: calc(env(safe-area-inset-top, 0px) + var(--sonar-pull-inset)) auto 0;
-  /* Glass, not a solid slab: the note stays legible underneath, which is what
-   * makes this read as a panel over your document rather than a new screen.
-   * mv-kit §3 — consume Cosmos's glass trio with canonical fallbacks, never
-   * define them. `-webkit-` first because Obsidian mobile is WebKit. None of
-   * the card's structural children paint a background of their own, so the
-   * translucency carries all the way through. */
-  background: var(--cosmos-glass-surface, color-mix(in srgb, var(--background-primary) 78%, transparent));
-  -webkit-backdrop-filter: var(--cosmos-glass-blur, blur(18px) saturate(115%));
-  backdrop-filter: var(--cosmos-glass-blur, blur(18px) saturate(115%));
-  border: var(--cosmos-glass-outline, 1px solid color-mix(in srgb, var(--text-muted) 16%, transparent));
-  border-radius: var(--radius-l, 16px);
-  /* No entrance animation declared here on purpose: modal.ts mounts this
-   * variant at opacity 0 and hands the value to the pull gesture, so a CSS
-   * keyframe would only fight the finger. See `beginDragEntrance`. */
-}
-/* The flex column has to cap too, or `.sonar-body`'s `flex: 1; min-height: 0`
- * has no bounded box to shrink against and `.sonar-results` never scrolls. */
-.sonar-modal.sonar-modal--pull-open .sonar-modal__content {
-  height: auto;
-  max-height: var(--sonar-pull-max-h);
-}
-/* No grabber on this variant (modal.ts skips it — a card is not a drag-to-
- * dismiss bottom sheet), so the input row carries its own top breathing room
- * again, and the footer no longer sits against the home indicator. */
-.sonar-modal--pull-open .sonar-input-row {
-  padding-top: var(--size-4-3);
-}
-.is-phone .sonar-modal--pull-open .sonar-footer {
-  padding-bottom: var(--size-4-2);
 }
 .is-phone .sonar-modal__content,
 .sonar-modal.is-narrow .sonar-modal__content {
@@ -681,7 +616,7 @@ body.is-phone .modal-container .sonar-modal.is-narrow.sonar-modal--pull-open,
  * mere tie would lose on source order. The tripled `.sonar-modal` is a deliberate
  * specificity bump to (0,5,1) — not a typo — so the search sheet stays
  * edge-to-edge regardless of theme. Margin/height are already won above. */
-body.is-phone .modal-container .sonar-modal.sonar-modal.sonar-modal:not(.sonar-modal--pull-open) {
+body.is-phone .modal-container .sonar-modal.sonar-modal.sonar-modal {
   width: 100vw !important;
   max-width: 100vw !important;
 }

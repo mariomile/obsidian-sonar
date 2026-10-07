@@ -172,24 +172,12 @@ export class SonarModal extends Modal {
    *  `settings.browseSort` rather than the module-scoped `lastFilters`. */
   private sortKey: SortKey;
 
-  /** Set while a pull gesture is driving the entrance: the surface is mounted
-   *  but its opacity belongs to the finger, not to a CSS animation. */
-  private entranceActive = false;
-  private closing = false;
-  private bgEl: HTMLElement | null = null;
-  /** Committing the entrance, and dismissing it, are both quick — the pull has
-   *  already carried most of the transition, so these only finish the job. */
-  private static readonly SETTLE_MS = 120;
-  private static readonly EXIT_MS = 110;
-  /** Each entrance-driven element mapped to the opacity it settles at, so
-   *  progress scales against its real resting value rather than 1. */
-  private readonly entranceTargets = new Map<HTMLElement, number>();
-
   private cancelQuery: (() => void) | null = null;
-  /** Coalesces bursts of keystrokes into a single query fire. Typing "hello"
-   *  should run one search, not five. 150ms is below perceptible latency. */
+  /** Coalesces bursts of keystrokes into a single query fire. Ranking takes
+   *  under a millisecond and excerpts arrive in a second pass, so this only
+   *  needs to absorb fast typing, not hide work. */
   private queryDebounceTimer: number | null = null;
-  private static readonly QUERY_DEBOUNCE_MS = 150;
+  private static readonly QUERY_DEBOUNCE_MS = 50;
   private queryStart = 0;
   private readonly previewComponent = new Component();
   private thumbnails!: ThumbnailRenderer;
@@ -198,11 +186,6 @@ export class SonarModal extends Modal {
   constructor(
     app: App,
     private readonly deps: ModalDeps,
-    /** Set when opened by the mobile pull-to-search gesture — the sheet then
-     *  drops in from the top instead of rising from the bottom, continuing
-     *  the same downward line the drag indicator started (see styles.css's
-     *  `.sonar-modal--pull-open`). */
-    private readonly pullOpened = false,
   ) {
     super(app);
     this.titleOnly = lastFilters.titleOnly;
@@ -226,15 +209,8 @@ export class SonarModal extends Modal {
     this.isSheet = isSheet;
     if (isSheet) {
       this.modalEl.addClass('is-narrow');
-      if (this.pullOpened) {
-        this.modalEl.addClass('sonar-modal--pull-open');
-        this.beginDragEntrance();
-      } else {
-        // Grab handle: the visual cue that the sheet is a drag-to-dismiss
-        // surface. The pull-open card gets none — it isn't a bottom sheet, and
-        // a handle would promise the wrong gesture.
-        this.contentEl.createDiv({ cls: 'sonar-sheet-grabber' });
-      }
+      // Grab handle: the visual cue that the sheet is a drag-to-dismiss surface.
+      this.contentEl.createDiv({ cls: 'sonar-sheet-grabber' });
     }
 
     // Input row: search icon · input · dedicated close ×.
@@ -308,108 +284,17 @@ export class SonarModal extends Modal {
 
     this.inputEl.addEventListener('input', () => this.onInput(this.inputEl.value));
     this.inputEl.addEventListener('keydown', (e) => this.onKeydown(e));
-    // A drag entrance defers focus to `completeEntrance`: focusing now would
-    // throw the keyboard up mid-pull, over a panel that is still fading in.
-    if (!this.entranceActive) this.inputEl.focus();
+    this.inputEl.focus();
     this.refresh();
     if (isSheet) this.setupSheetGestures();
   }
 
-  // ---- drag-driven entrance (pull-to-search) ----
-
-  /** Mount the surface invisible and hand its opacity to the gesture. Both the
-   *  panel and Obsidian's backdrop get their animations killed — from here the
-   *  finger is the only thing that moves them.
-   *
-   *  Each element's own settled opacity is captured first and treated as the
-   *  100% mark, rather than assumed to be 1: the backdrop rests at 0.2 (it
-   *  dims, it doesn't black out), so driving it to 1 would render the pull
-   *  five times darker than a normal open. Killing the animation before
-   *  reading is what makes the read return the cascade's value instead of
-   *  whatever frame the fade-in happens to be on. */
-  private beginDragEntrance(): void {
-    this.entranceActive = true;
-    this.bgEl = this.containerEl.querySelector('.modal-bg');
-    for (const el of [this.modalEl, this.bgEl]) {
-      if (!el) continue;
-      el.style.animation = 'none';
-      el.style.transition = 'none';
-      const settled = Number(getComputedStyle(el).opacity);
-      this.entranceTargets.set(el, Number.isFinite(settled) ? settled : 1);
-      el.style.opacity = '0';
-    }
-  }
-
-  /** Drive the entrance from drag progress (0..1). */
-  setEntranceProgress(p: number): void {
-    if (!this.entranceActive) return;
-    this.paintEntrance(Math.max(0, Math.min(p, 1)));
-  }
-
-  /** Apply `p` (0..1) against each element's captured settled opacity. */
-  private paintEntrance(p: number): void {
-    for (const [el, target] of this.entranceTargets) {
-      el.style.opacity = String(p * target);
-    }
-  }
-
-  /** Finish the entrance, then focus — the keyboard rises once the panel has
-   *  settled, as Craft's does, rather than racing the fade. */
-  completeEntrance(): void {
-    // No drag entrance to finish on a tablet-width layout, where the gesture
-    // still runs but the card variant doesn't apply — focus is owed either way.
-    if (!this.entranceActive) {
-      this.inputEl.focus();
-      return;
-    }
-    this.entranceActive = false;
-    this.settleEntrance(1, SonarModal.SETTLE_MS, () => this.inputEl.focus());
-  }
-
-  /** Take the entrance back off. `close` handles the fade. */
-  cancelEntrance(): void {
-    this.entranceActive = false;
-    this.close();
-  }
-
-  /**
-   * The pull card leaves the way it arrived: fading in place. Obsidian's
-   * mobile modals slide *downward* on dismiss, which is right for a bottom
-   * sheet and wrong for a panel anchored at the top — it read as the bar
-   * falling out of the screen. Fading to zero before handing over to
-   * `super.close()` means whatever core animates afterwards happens on an
-   * already-invisible element.
-   */
-  close(): void {
-    if (!this.pullOpened || this.closing) {
-      super.close();
-      return;
-    }
-    this.closing = true;
-    this.entranceActive = false;
-    this.settleEntrance(0, SonarModal.EXIT_MS, () => super.close());
-  }
-
-  private settleEntrance(to: number, ms: number, done: () => void): void {
-    for (const el of this.entranceTargets.keys()) {
-      el.style.transition = `opacity ${ms}ms ease-out`;
-    }
-    this.paintEntrance(to);
-    window.setTimeout(done, ms);
-  }
-
   /** Native-style drag-to-dismiss for the phone / narrow sheet: dragging the
    *  header (anything outside the scrolling results list) past a threshold
-   *  slides the surface off-screen and closes it; a shorter drag snaps back.
-   *  The results list keeps its own vertical scroll.
-   *
-   *  Direction follows the surface: the bottom sheet leaves downward, the
-   *  pull-open card (anchored to the top) leaves upward. Dragging the *other*
-   *  way does nothing in either case. */
+   *  slides the sheet off-screen and closes it; a shorter drag snaps back.
+   *  The results list keeps its own vertical scroll. */
   private setupSheetGestures(): void {
     const settle = 'transform 220ms cubic-bezier(0.32, 0.72, 0, 1)';
-    /** +1 = dismisses downward (sheet), -1 = upward (top-anchored card). */
-    const exit = this.pullOpened ? -1 : 1;
     let startY = 0;
     let dy = 0;
     let dragging = false;
@@ -417,7 +302,6 @@ export class SonarModal extends Modal {
     const start = (e: TouchEvent): void => {
       const touch = e.touches[0];
       if (!touch || e.touches.length !== 1) return;
-      if (this.entranceActive) return; // the entrance owns the surface until it settles
       if ((e.target as HTMLElement).closest('.sonar-results')) return; // let the list scroll
       startY = touch.clientY;
       dy = 0;
@@ -429,8 +313,8 @@ export class SonarModal extends Modal {
       const touch = e.touches[0];
       if (!dragging || !touch) return;
       dy = touch.clientY - startY;
-      if (dy * exit <= 0) {
-        this.modalEl.style.transform = ''; // dragged against the exit direction
+      if (dy <= 0) {
+        this.modalEl.style.transform = ''; // dragged upward — not a dismiss
         return;
       }
       e.preventDefault();
@@ -440,15 +324,9 @@ export class SonarModal extends Modal {
       if (!dragging) return;
       dragging = false;
       this.modalEl.style.transition = settle;
-      if (dy * exit > 110) {
-        // The card fades from wherever the drag left it; only the bottom sheet
-        // throws itself off-screen, which is what a bottom sheet should do.
-        if (exit > 0) {
-          this.modalEl.style.transform = 'translateY(100%)';
-          window.setTimeout(() => this.close(), 200);
-        } else {
-          this.close();
-        }
+      if (dy > 110) {
+        this.modalEl.style.transform = 'translateY(100%)';
+        window.setTimeout(() => this.close(), 200);
       } else {
         this.modalEl.style.transform = '';
       }

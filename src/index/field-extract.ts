@@ -16,6 +16,8 @@ export interface NoteMeta {
 
 export interface ExtractInput {
   basename: string;
+  /** Vault path; lets a hub note (`context.md`) be indexed under its folder. */
+  path?: string;
   content: string;
   meta: NoteMeta;
 }
@@ -60,6 +62,17 @@ function asStringArray(value: unknown): string[] {
  * folded tag list). Everything routes through the shared tokenizer, so query
  * terms match. Only the BODY field carries positions.
  */
+/** Notes named like this are their folder's hub, so the folder name is their
+ *  real title: `Projects/DeepAgent/context.md` should answer "deepagent". */
+const HUB_BASENAMES = new Set(['context', 'index', 'readme', 'overview', 'home', '_index']);
+
+/** The folder a hub note stands for, or null for an ordinary note. */
+export function hubFolder(path: string, basename: string): string | null {
+  if (!HUB_BASENAMES.has(fold(basename))) return null;
+  const parts = path.split('/');
+  return parts.length >= 2 ? parts[parts.length - 2]! : null;
+}
+
 export function extractFields(input: ExtractInput): ExtractOutput {
   const { basename, content, meta } = input;
   const fm = meta.frontmatter ?? {};
@@ -78,6 +91,8 @@ export function extractFields(input: ExtractInput): ExtractOutput {
   for (const t of asStringArray(fm.tags)) addTag(t);
 
   // Aliases from frontmatter.
+  // A hub note's real name is its folder's, so the folder joins the basename.
+  const folder = input.path ? hubFolder(input.path, basename) : null;
   const aliasText = asStringArray(fm.aliases).join(' ');
 
   // Headings split by level.
@@ -101,7 +116,7 @@ export function extractFields(input: ExtractInput): ExtractOutput {
   const bodyTokens = tokenize(stripFrontmatter(content));
 
   const fields = new Array<FieldInput>(FIELD_COUNT);
-  fields[FIELD.BASENAME] = { terms: termsOnly(basename) };
+  fields[FIELD.BASENAME] = { terms: termsOnly(folder ? `${folder} ${basename}` : basename) };
   fields[FIELD.ALIASES] = { terms: termsOnly(aliasText) };
   fields[FIELD.H1] = { terms: termsOnly(h1.join(' ')) };
   fields[FIELD.H2H3] = { terms: termsOnly(h2h3.join(' ')) };
