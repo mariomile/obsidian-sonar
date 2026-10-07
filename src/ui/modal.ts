@@ -173,10 +173,11 @@ export class SonarModal extends Modal {
   private sortKey: SortKey;
 
   private cancelQuery: (() => void) | null = null;
-  /** Coalesces bursts of keystrokes into a single query fire. Typing "hello"
-   *  should run one search, not five. 150ms is below perceptible latency. */
+  /** Coalesces bursts of keystrokes into a single query fire. Ranking takes
+   *  under a millisecond and excerpts arrive in a second pass, so this only
+   *  needs to absorb fast typing, not hide work. */
   private queryDebounceTimer: number | null = null;
-  private static readonly QUERY_DEBOUNCE_MS = 150;
+  private static readonly QUERY_DEBOUNCE_MS = 50;
   private queryStart = 0;
   private readonly previewComponent = new Component();
   private thumbnails!: ThumbnailRenderer;

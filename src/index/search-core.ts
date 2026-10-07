@@ -1,7 +1,8 @@
-import { fold } from './tokenizer.ts';
-import { parseQuery } from './query.ts';
+import { fold, tokenize } from './tokenizer.ts';
+import { parseQuery, type QueryTerm } from './query.ts';
+import { hubFolder } from './field-extract.ts';
 import { fuzzyCandidates } from './fuzzy.ts';
-import { rank, RANK, type TermGroup } from './bm25f.ts';
+import { rank, RANK, type ScoredDoc, type TermGroup } from './bm25f.ts';
 import { FIELD } from './fields.ts';
 import type { InvertedIndex } from './inverted-index.ts';
 import type { DocType } from './fields.ts';
@@ -40,6 +41,10 @@ export interface SearchOptions {
 const DEFAULT_LIMIT = 20;
 /** Below this many results, invoke the fuzzy fallback. */
 const FUZZY_MIN = 5;
+/** How many ranked candidates the title-intent pass looks at before slicing. */
+const TITLE_POOL = 200;
+/** A word typed before the last one still prefix-matches from this length. */
+const PREFIX_MIN_LEN = 3;
 
 /** idf weights for a set of terms — lets excerpt selection favor rare terms. */
 export function excerptWeights(index: InvertedIndex, terms: string[]): Map<string, number> {
@@ -68,9 +73,11 @@ export function search(index: InvertedIndex, raw: string, opts: SearchOptions): 
   if (exactSet.size === 0) return [];
 
   const groups: TermGroup[] = [...exactSet].map((term) => ({ variants: [term], weight: 1 }));
-  // Prefix expansion for the token(s) being typed, excluding the exact term.
+  // Prefix expansion, excluding the exact term: always for the word being
+  // typed, and for earlier words long enough to be a deliberate abbreviation
+  // ("prod her" → Product Heroes).
   for (const t of parsed.terms) {
-    if (!t.prefix) continue;
+    if (!t.prefix && t.term.length < PREFIX_MIN_LEN) continue;
     const expansions = index.prefixTerms(t.term).filter((x) => x !== t.term);
     if (expansions.length > 0) groups.push({ variants: expansions, weight: RANK.prefixWeight });
   }
@@ -81,12 +88,13 @@ export function search(index: InvertedIndex, raw: string, opts: SearchOptions): 
   const allow = buildAllow(index, parsed.exclusions, pathFilters, tagFilters, opts.minMtime);
   const restrictFields = opts.titleOnly ? TITLE_FIELDS : undefined;
 
+  const pool = Math.max(limit, TITLE_POOL);
   let scored = rank({
     index,
     groups,
     phrases: parsed.phrases,
     now: opts.now,
-    limit,
+    limit: pool,
     allow,
     restrictFields,
   });
@@ -111,12 +119,14 @@ export function search(index: InvertedIndex, raw: string, opts: SearchOptions): 
         groups: fuzzyGroups,
         phrases: parsed.phrases,
         now: opts.now,
-        limit,
+        limit: pool,
         allow,
         restrictFields,
       });
     }
   }
+
+  scored = applyTitleIntent(index, scored, parsed.terms).slice(0, limit);
 
   return scored.map((s) => {
     const d = index.docEntry(s.docId)!;
@@ -131,6 +141,59 @@ export function search(index: InvertedIndex, raw: string, opts: SearchOptions): 
       matched: s.matched,
     };
   });
+}
+
+/** One title word: its folded whole form plus its camelCase parts
+ *  ("DeepAgent" → deepagent / deep, agent). */
+export interface TitleWord {
+  whole: string;
+  parts: string[];
+}
+
+/** The words a note is titled by: its basename, or its folder for a hub note. */
+export function titleWords(path: string, basename: string): TitleWord[] {
+  const words: TitleWord[] = [];
+  for (const run of (hubFolder(path, basename) ?? basename).split(/[^\p{L}\p{N}]+/u)) {
+    if (!run) continue;
+    const parts = tokenize(run).map((t) => t.text);
+    const whole = fold(run);
+    if (whole.length > 1) words.push({ whole, parts: parts.filter((p) => p !== whole) });
+  }
+  return words;
+}
+
+/** How well the title answers the query: 'exact' when query and title words
+ *  cover each other, 'all' when every query word is in the title, else none. */
+export function titleMatch(title: TitleWord[], terms: QueryTerm[]): 'exact' | 'all' | null {
+  if (terms.length === 0 || title.length === 0) return null;
+  const hits = (t: QueryTerm, word: string): boolean =>
+    word === t.term ||
+    ((t.prefix || t.term.length >= PREFIX_MIN_LEN) && word.startsWith(t.term));
+  const hitsWord = (t: QueryTerm, w: TitleWord): boolean =>
+    hits(t, w.whole) || w.parts.some((p) => hits(t, p));
+  if (!terms.every((t) => title.some((w) => hitsWord(t, w)))) return null;
+  const covered = (w: TitleWord): boolean =>
+    terms.some((t) => hits(t, w.whole)) ||
+    (w.parts.length > 0 && w.parts.every((p) => terms.some((t) => hits(t, p))));
+  return title.every(covered) ? 'exact' : 'all';
+}
+
+/** Boost the candidates whose title is what the user typed. Field weights alone
+ *  can't do this: a transcript titled "Mario Miletta and Rosario" that repeats
+ *  the name in its body outscores the note titled just "Mario Miletta". */
+function applyTitleIntent(index: InvertedIndex, scored: ScoredDoc[], terms: QueryTerm[]): ScoredDoc[] {
+  if (terms.length === 0) return scored;
+  let changed = false;
+  for (const s of scored) {
+    const d = index.docEntry(s.docId);
+    if (!d) continue;
+    const match = titleMatch(titleWords(d.path, d.basename), terms);
+    if (match === 'exact') s.score *= 1 + RANK.titleExact;
+    else if (match === 'all') s.score *= 1 + RANK.titleAll;
+    if (match) changed = true;
+  }
+  if (changed) scored.sort((a, b) => b.score - a.score);
+  return scored;
 }
 
 /** Compose the filter predicate for exclusions + path + tag operators. */

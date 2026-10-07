@@ -18,8 +18,8 @@ export class KeywordProvider implements SearchProvider {
     return true;
   }
 
-  async search(raw: string, opts: ProviderSearchOptions): Promise<ProviderResult[]> {
-    const hits = await this.service.query(raw, {
+  search(raw: string, opts: ProviderSearchOptions): Promise<ProviderResult[]> {
+    const hits = this.service.rank(raw, {
       limit: opts.limit,
       now: opts.now,
       signal: opts.signal,
@@ -28,14 +28,33 @@ export class KeywordProvider implements SearchProvider {
       tagFilters: opts.tagFilters,
       minMtime: opts.minMtime,
     });
-    return hits.map((h) => ({
-      path: h.path,
-      basename: h.basename,
-      docType: h.docType,
-      score: h.score,
-      source: this.id,
-      matched: h.matched,
-      excerpt: h.excerpt,
-    }));
+    return Promise.resolve(
+      hits.map((h) => ({
+        path: h.path,
+        basename: h.basename,
+        docType: h.docType,
+        score: h.score,
+        source: this.id,
+        matched: h.matched,
+      })),
+    );
+  }
+
+  /** Second pass: the excerpts, which read note text. */
+  async enrich(results: ProviderResult[], signal: AbortSignal): Promise<ProviderResult[]> {
+    const hits = await this.service.withExcerpts(
+      results.map((r) => ({
+        docId: -1,
+        path: r.path,
+        basename: r.basename,
+        docType: r.docType,
+        tags: [],
+        mtime: 0,
+        score: r.score,
+        matched: r.matched,
+      })),
+      signal,
+    );
+    return results.map((r, i) => ({ ...r, excerpt: hits[i]?.excerpt }));
   }
 }

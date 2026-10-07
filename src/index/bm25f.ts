@@ -22,6 +22,10 @@ export const RANK = {
   proximityWindow: 8,
   phraseBonus: 0.5,
   recencyR: 0.15,
+  /** Title-intent multipliers (search-core): the title is exactly the query,
+   *  or contains every query word. */
+  titleExact: 1.5,
+  titleAll: 0.5,
   recencyHalfLifeDays: 90,
   /** How many top candidates get the proximity/phrase rescoring pass. */
   rescoreTop: 100,

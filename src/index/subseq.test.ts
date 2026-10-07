@@ -48,3 +48,10 @@ describe('subsequenceScore', () => {
     expect(prefix).toBeGreaterThan(scattered);
   });
 });
+
+describe('subsequenceScore — folding that changes length', () => {
+  it('does not throw when folding lengthens the name (… → ...)', () => {
+    expect(() => subsequenceScore('cosmos', '…Cosmos')).not.toThrow();
+    expect(subsequenceScore('cosmos', '…Cosmos')).not.toBeNull();
+  });
+});

@@ -8,7 +8,7 @@ import type { DocEntry, IndexSnapshot, InvertedIndex, SnapshotTerm } from './inv
  * retain zero-copy Uint32Array views over the large postings arena instead of
  * materializing one typed copy plus one JavaScript array per term.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 const MAGIC = 0x534e5231; // 'SNR1'
 const encoder = new TextEncoder();

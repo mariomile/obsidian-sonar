@@ -16,6 +16,8 @@ export interface NoteMeta {
 
 export interface ExtractInput {
   basename: string;
+  /** Vault path; lets a hub note (`context.md`) be indexed under its folder. */
+  path?: string;
   content: string;
   meta: NoteMeta;
 }
@@ -60,6 +62,17 @@ function asStringArray(value: unknown): string[] {
  * folded tag list). Everything routes through the shared tokenizer, so query
  * terms match. Only the BODY field carries positions.
  */
+/** Notes named like this are their folder's hub, so the folder name is their
+ *  real title: `Projects/DeepAgent/context.md` should answer "deepagent". */
+const HUB_BASENAMES = new Set(['context', 'index', 'readme', 'overview', 'home', '_index']);
+
+/** The folder a hub note stands for, or null for an ordinary note. */
+export function hubFolder(path: string, basename: string): string | null {
+  if (!HUB_BASENAMES.has(fold(basename))) return null;
+  const parts = path.split('/');
+  return parts.length >= 2 ? parts[parts.length - 2]! : null;
+}
+
 export function extractFields(input: ExtractInput): ExtractOutput {
   const { basename, content, meta } = input;
   const fm = meta.frontmatter ?? {};
@@ -78,7 +91,9 @@ export function extractFields(input: ExtractInput): ExtractOutput {
   for (const t of asStringArray(fm.tags)) addTag(t);
 
   // Aliases from frontmatter.
-  const aliasText = asStringArray(fm.aliases).join(' ');
+  // A hub note is also known by its folder's name.
+  const folder = input.path ? hubFolder(input.path, basename) : null;
+  const aliasText = [...asStringArray(fm.aliases), ...(folder ? [folder] : [])].join(' ');
 
   // Headings split by level.
   const h1: string[] = [];

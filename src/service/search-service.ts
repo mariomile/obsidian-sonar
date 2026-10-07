@@ -60,6 +60,8 @@ const SAVE_DEBOUNCE_MS = 60_000;
  *  the write indefinitely. Caps worst-case cache staleness at 5 min. */
 const SAVE_MAX_WAIT_MS = 5 * 60_000;
 const SLICE_MS = 12;
+/** Upper bound on cached excerpt source text (UTF-16 chars, ~8 MB). */
+const TEXT_CACHE_CHARS = 4_000_000;
 const COMPACT_MIN = 2_000;
 /** Guard against a single file read hanging the whole build. */
 const READ_TIMEOUT_MS = 5_000;
@@ -123,6 +125,9 @@ export class SearchService {
   private saveInFlight: Promise<void> | null = null;
   private disposed = false;
   private readonly progressListeners = new Set<(status: IndexStatus) => void>();
+  /** LRU of stripped note text for excerpts (insertion order = recency). */
+  private readonly textCache = new Map<string, { mtime: number; text: string }>();
+  private textCacheChars = 0;
 
   extractor: Extractor | null = null;
   frecency: FrecencyTracker | null = null;
@@ -335,7 +340,7 @@ export class SearchService {
       }
     }
     const meta = toNoteMeta(this.app.metadataCache.getFileCache(file));
-    const { fields, tags } = extractFields({ basename: file.basename, content, meta });
+    const { fields, tags } = extractFields({ basename: file.basename, path: file.path, content, meta });
     if (this.index.getIdByPath(file.path) !== undefined) this.index.tombstone(file.path);
     this.index.addDocument({
       path: file.path,
@@ -379,6 +384,13 @@ export class SearchService {
 
   /** Run a search and attach an excerpt to each hit (reads live file text). */
   async query(raw: string, opts: QueryOptions): Promise<KeywordHit[]> {
+    return this.withExcerpts(this.rank(raw, opts), opts.signal);
+  }
+
+  /** Ranked hits without excerpts. Pure in-memory work (well under a
+   *  millisecond on a 5k-note vault), so the modal can paint the list at once
+   *  and fill excerpts in a second pass. */
+  rank(raw: string, opts: QueryOptions): SearchResult[] {
     const results = search(this.index, raw, {
       limit: opts.limit,
       now: opts.now,
@@ -394,17 +406,19 @@ export class SearchService {
       for (const r of results) r.score *= this.frecency.boost(r.path, opts.now);
       results.sort((a, b) => b.score - a.score);
     }
-    // Excerpts read live file text (cachedRead). Fire them concurrently rather
-    // than awaiting each in turn — wall-clock drops from sum-of-reads to the
-    // slowest single read. Order is preserved by Promise.all's index mapping.
-    if (opts.signal?.aborted) return [];
-    const hits: KeywordHit[] = await Promise.all(
+    return results;
+  }
+
+  /** Attach excerpts. Reads run concurrently, so wall-clock is the slowest
+   *  single read, and repeat reads within a typing burst hit `textCache`. */
+  async withExcerpts(results: SearchResult[], signal?: AbortSignal): Promise<KeywordHit[]> {
+    if (signal?.aborted) return [];
+    return Promise.all(
       results.map(async (r) => ({
         ...r,
-        excerpt: opts.signal?.aborted ? undefined : await this.buildExcerpt(r),
-      }))
+        excerpt: signal?.aborted ? undefined : await this.buildExcerpt(r),
+      })),
     );
-    return hits;
   }
 
   /** The timestamp `sortBy` resolves to for a live entry. 'created' does a
@@ -504,30 +518,41 @@ export class SearchService {
     }
   }
 
-  private async buildExcerpt(r: SearchResult): Promise<Excerpt | undefined> {
-    let text: string | undefined;
-    if (r.docType === 'md') {
-      const file = this.app.vault.getAbstractFileByPath(r.path);
-      if (file instanceof TFile) {
-        try {
-          // Strip the YAML block so excerpts show prose, not frontmatter.
-          text = stripFrontmatter(await this.app.vault.cachedRead(file));
-        } catch {
-          text = undefined;
-        }
-      }
-    } else if (r.docType === 'html') {
-      const file = this.app.vault.getAbstractFileByPath(r.path);
-      if (file instanceof TFile) {
-        try {
-          text = htmlToText(await this.app.vault.cachedRead(file)).text;
-        } catch {
-          text = undefined;
-        }
-      }
-    } else if (this.extractor) {
-      text = this.extractor.cachedText(r.path);
+  /** Searchable text of a hit's file, cached by mtime so the many queries of
+   *  one typing burst don't re-read and re-strip the same notes. */
+  private async excerptSource(r: SearchResult): Promise<string | undefined> {
+    if (r.docType !== 'md' && r.docType !== 'html') return this.extractor?.cachedText(r.path);
+    const file = this.app.vault.getAbstractFileByPath(r.path);
+    if (!(file instanceof TFile)) return undefined;
+    const hit = this.textCache.get(r.path);
+    if (hit && hit.mtime === file.stat.mtime) {
+      // Re-insert to mark as most recently used.
+      this.textCache.delete(r.path);
+      this.textCache.set(r.path, hit);
+      return hit.text;
     }
+    let text: string;
+    try {
+      const raw = await this.app.vault.cachedRead(file);
+      // Strip the YAML block so excerpts show prose, not frontmatter.
+      text = r.docType === 'md' ? stripFrontmatter(raw) : htmlToText(raw).text;
+    } catch {
+      return undefined;
+    }
+    if (hit) this.textCacheChars -= hit.text.length;
+    this.textCache.delete(r.path);
+    this.textCache.set(r.path, { mtime: file.stat.mtime, text });
+    this.textCacheChars += text.length;
+    for (const [path, entry] of this.textCache) {
+      if (this.textCacheChars <= TEXT_CACHE_CHARS) break;
+      this.textCache.delete(path);
+      this.textCacheChars -= entry.text.length;
+    }
+    return text;
+  }
+
+  private async buildExcerpt(r: SearchResult): Promise<Excerpt | undefined> {
+    const text = await this.excerptSource(r);
     if (!text) return undefined;
     return makeExcerpt(text, r.matched, { weights: excerptWeights(this.index, r.matched) });
   }

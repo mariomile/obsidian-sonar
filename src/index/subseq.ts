@@ -23,6 +23,10 @@ export function subsequenceScore(query: string, candidate: string): number | nul
   if (q.length === 0) return null;
   const c = fold(candidate);
   if (c.length === 0) return null;
+  // Boundaries are read from the original (it keeps case for camelCase). When
+  // folding changed the length ("…" → "..."), offsets no longer line up, so
+  // fall back to the folded name and lose only the camelCase signal.
+  const shape = c.length === candidate.length ? candidate : c;
 
   let ci = 0;
   let score = 0;
@@ -43,7 +47,7 @@ export function subsequenceScore(query: string, candidate: string): number | nul
 
     let charScore = 1;
     if (found === prevMatch + 1) charScore += 3; // consecutive run
-    if (isBoundary(candidate, found)) charScore += 4; // word/camel boundary
+    if (isBoundary(shape, found)) charScore += 4; // word/camel boundary
     score += charScore;
 
     prevMatch = found;
