@@ -199,4 +199,12 @@ describe('search — title intent', () => {
     ]);
     expect(paths(index, 'prod her')[0]).toBe('CRM/Companies/Product Heroes.md');
   });
+
+  it('ignores a year in the title when judging an exact title match', () => {
+    const index = buildIndex([
+      { path: 'Knowledge/Finding Jobs via ATS Search.md', content: 'job search tips' },
+      { path: 'Projects/Job Search 2026/context.md', content: 'Pipeline and applications.' },
+    ]);
+    expect(paths(index, 'job search')[0]).toBe('Projects/Job Search 2026/context.md');
+  });
 });

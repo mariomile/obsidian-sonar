@@ -72,14 +72,14 @@ export function search(index: InvertedIndex, raw: string, opts: SearchOptions): 
   for (const phrase of parsed.phrases) for (const t of phrase) exactSet.add(t);
   if (exactSet.size === 0) return [];
 
-  const groups: TermGroup[] = [...exactSet].map((term) => ({ variants: [term], weight: 1 }));
+  const groups: TermGroup[] = [...exactSet].map((term) => ({ variants: [term], weight: 1, key: term }));
   // Prefix expansion, excluding the exact term: always for the word being
   // typed, and for earlier words long enough to be a deliberate abbreviation
   // ("prod her" → Product Heroes).
   for (const t of parsed.terms) {
     if (!t.prefix && t.term.length < PREFIX_MIN_LEN) continue;
     const expansions = index.prefixTerms(t.term).filter((x) => x !== t.term);
-    if (expansions.length > 0) groups.push({ variants: expansions, weight: RANK.prefixWeight });
+    if (expansions.length > 0) groups.push({ variants: expansions, weight: RANK.prefixWeight, key: t.term });
   }
 
   // Merge query operators with chip filters.
@@ -111,7 +111,7 @@ export function search(index: InvertedIndex, raw: string, opts: SearchOptions): 
       const cands = fuzzyCandidates(t.term, index.allTerms, maxDist)
         .map((m) => m.term)
         .filter((x) => !exactSet.has(x));
-      if (cands.length > 0) fuzzyGroups.push({ variants: cands, weight: RANK.fuzzyWeight });
+      if (cands.length > 0) fuzzyGroups.push({ variants: cands, weight: RANK.fuzzyWeight, key: t.term });
     }
     if (fuzzyGroups.length > groups.length) {
       scored = rank({
@@ -175,7 +175,9 @@ export function titleMatch(title: TitleWord[], terms: QueryTerm[]): 'exact' | 'a
   const covered = (w: TitleWord): boolean =>
     terms.some((t) => hits(t, w.whole)) ||
     (w.parts.length > 0 && w.parts.every((p) => terms.some((t) => hits(t, p))));
-  return title.every(covered) ? 'exact' : 'all';
+  // A bare number in a title ("Job Search 2026") is a version or a year,
+  // not a word the user is expected to type.
+  return title.every((w) => covered(w) || /^\d+$/.test(w.whole)) ? 'exact' : 'all';
 }
 
 /** Boost the candidates whose title is what the user typed. Field weights alone
