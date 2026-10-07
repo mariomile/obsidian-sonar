@@ -229,4 +229,16 @@ describe('mv-kit style contract', () => {
 
     expect(violations).toEqual([]);
   });
+
+  // Corner radii come from the active theme: every border-radius is a var()
+  // (with Sonar's value only as a fallback), or a shape that isn't a radius
+  // choice (0, a full pill, a circle).
+  it('takes every corner radius from a theme token', () => {
+    const offenders = stripComments(css)
+      .split('\n')
+      .map((line, idx) => ({ line: line.trim(), n: idx + 1 }))
+      .filter(({ line }) => /^border-radius\s*:/.test(line))
+      .filter(({ line }) => !/^border-radius\s*:\s*(var\(|0;|999px;|50%;)/.test(line));
+    expect(offenders).toEqual([]);
+  });
 });

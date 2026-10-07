@@ -12,8 +12,12 @@
  */
 
 .sonar-modal {
-  --sonar-radius: var(--radius-l, 12px);
-  --sonar-row-radius: var(--radius-m, 8px);
+  /* Radii follow the active theme's semantic tokens (same approach as Exo):
+   * the modal takes the theme's modal radius, rows and the preview card its
+   * card radius, chips its chip radius. Sonar's old values are the fallbacks. */
+  --sonar-radius: var(--modal-radius, var(--radius-l, 12px));
+  --sonar-row-radius: var(--mv-r-card, var(--radius-m, 8px));
+  --sonar-chip-radius: var(--mv-r-chip, var(--mv-r1, 6px));
   /* mv-kit §3/§6: hover/reveal wash consumes the Cosmos motion tokens with
    * canonical fallbacks (theme-as-override — never define the --cosmos- or
    * --mv- tokens ourselves at :root). Falls back to the same literal values
@@ -87,7 +91,7 @@
   height: 28px;
   padding: 0;
   border: none;
-  border-radius: var(--radius-s);
+  border-radius: var(--clickable-icon-radius, var(--radius-s));
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -190,9 +194,8 @@
   height: 26px;
   padding: 0 10px;
   border: var(--border-width) solid transparent;
-  /* mv-kit §1: chip radius consumes the suite-wide --mv-r1 chip/toolbar
-   * token instead of a hand-picked pixel value. */
-  border-radius: var(--mv-r1, 6px);
+  /* mv-kit §1: chip radius consumes the suite-wide chip token. */
+  border-radius: var(--sonar-chip-radius);
   background: transparent;
   color: var(--text-muted);
   font-size: var(--font-ui-small);
@@ -405,7 +408,7 @@
   color: var(--text-faint);
   padding: 0 var(--size-2-2);
   border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
+  border-radius: var(--sonar-chip-radius);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -574,7 +577,7 @@
   max-height: 100vh !important;
   max-height: calc(100dvh - env(safe-area-inset-top, 0px)) !important;
   margin: 0 !important;
-  border-radius: var(--radius-l, 16px) var(--radius-l, 16px) 0 0;
+  border-radius: var(--sonar-radius) var(--sonar-radius) 0 0;
   /* mv-kit §3: structural sheet-rise consumes --cosmos-t-panel /
    * --cosmos-native (the exact recipe cosmos-phone.css's own sheet-rise
    * keyframe uses) with canonical fallbacks. */
