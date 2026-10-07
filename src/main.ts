@@ -15,7 +15,7 @@ import { CommandMode } from './ui/modes/command-mode.ts';
 import { CaptureMode } from './ui/modes/capture-mode.ts';
 import { IntentMode } from './ui/modes/intent-mode.ts';
 import { appendCapture } from './service/capture.ts';
-import { registerPullToSearch } from './ui/pull-to-search.ts';
+import { registerNavbarLongPress } from './ui/navbar-longpress.ts';
 import { publicSearch } from './service/public-search.ts';
 import type { SonarSearchHit } from './types.ts';
 
@@ -91,14 +91,11 @@ export default class SonarPlugin extends Plugin {
     });
     this.addRibbonIcon('hi-search', 'Sonar: search vault', () => this.openModal());
     this.addSettingTab(new SonarSettingTab(this.app, this));
-    registerPullToSearch(this, () => this.settings.pullToSearchEnabled, () => {
-      const modal = this.openModal(true);
-      return {
-        setProgress: (p) => modal.setEntranceProgress(p),
-        commit: () => modal.completeEntrance(),
-        cancel: () => modal.cancelEntrance(),
-      };
-    });
+    registerNavbarLongPress(
+      this,
+      () => this.settings.navbarLongPressEnabled,
+      () => this.openModal(),
+    );
 
     this.service.start((ref) => this.registerEvent(ref));
     this.frecency.start((ref) => this.registerEvent(ref), () => Date.now());
@@ -133,7 +130,7 @@ export default class SonarPlugin extends Plugin {
     this.extractor?.dispose();
   }
 
-  private openModal(pullOpened = false): SonarModal {
+  private openModal(): SonarModal {
     const modal = new SonarModal(this.app, {
       registry: this.registry,
       service: this.service,
@@ -146,7 +143,7 @@ export default class SonarPlugin extends Plugin {
         new CaptureMode((text) => appendCapture(this.app, text, Date.now()), close),
         new IntentMode(() => this.exoAvailable(), (q) => askExo(q, 'sonar-intent')),
       ],
-    }, pullOpened);
+    });
     modal.open();
     return modal;
   }

@@ -104,11 +104,13 @@ export class SonarSettingTab extends PluginSettingTab {
     new Setting(containerEl).setName('Mobile').setHeading();
 
     new Setting(containerEl)
-      .setName('Pull down to search')
-      .setDesc('While a note is scrolled to its top, pulling down opens Sonar (mobile only).')
+      .setName('Long-press navbar search icon')
+      .setDesc(
+        'Holding the search icon in the bottom navbar opens Sonar; a short tap still opens the Quick Switcher (mobile only).',
+      )
       .addToggle((t) =>
-        t.setValue(s.pullToSearchEnabled).onChange(async (v) => {
-          s.pullToSearchEnabled = v;
+        t.setValue(s.navbarLongPressEnabled).onChange(async (v) => {
+          s.navbarLongPressEnabled = v;
           await this.plugin.saveSettings();
         }),
       );
