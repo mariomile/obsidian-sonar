@@ -1,5 +1,6 @@
 import type { KeywordHit } from './search-service.ts';
 import type { SonarSearchHit } from '../types.ts';
+import { hubFolder } from '../index/field-extract.ts';
 
 /** Excerpt text for a hit, or '' when none was built (e.g. the file read
  *  failed). Shared so the HTTP `/search` endpoint and the public `search()`
@@ -13,7 +14,8 @@ export function hitExcerptText(hit: KeywordHit): string {
 export function toSonarSearchHit(hit: KeywordHit): SonarSearchHit {
   return {
     path: hit.path,
-    title: hit.basename,
+    // A hub note (`context.md`) is known by its folder, not by "context".
+    title: hubFolder(hit.path, hit.basename) ?? hit.basename,
     score: hit.score,
     excerpt: hitExcerptText(hit),
   };
