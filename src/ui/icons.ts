@@ -40,7 +40,7 @@ const BY_DOCTYPE: Record<DocType, string> = {
 
 /** Pick an Obsidian icon: extension first, then docType, then a generic file. */
 export function iconFor(ext: string | undefined, docType: DocType): string {
-  if (ext && BY_EXT[ext]) return BY_EXT[ext]!;
-  if (docType && BY_DOCTYPE[docType]) return BY_DOCTYPE[docType]!;
+  if (ext && BY_EXT[ext]) return BY_EXT[ext];
+  if (docType && BY_DOCTYPE[docType]) return BY_DOCTYPE[docType];
   return 'file';
 }

@@ -15,11 +15,11 @@ function waitUntilReady(service: SearchService, timeoutMs: number): Promise<void
   if (service.getStatus().ready) return Promise.resolve();
   return new Promise((resolve) => {
     const settle = (): void => {
-      clearTimeout(timer);
+      window.clearTimeout(timer);
       unsubscribe();
       resolve();
     };
-    const timer = setTimeout(settle, timeoutMs);
+    const timer = window.setTimeout(settle, timeoutMs);
     const unsubscribe = service.onProgress((status) => {
       if (status.ready) settle();
     });

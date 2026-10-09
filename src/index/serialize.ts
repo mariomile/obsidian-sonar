@@ -109,7 +109,7 @@ export function decodeIndex(input: ArrayBuffer | Uint8Array): DecodedIndex | nul
   if (p + postingsWordCount * 4 > view.byteLength) return null;
   const postings = readU32View(bytes, p, postingsWordCount);
 
-  const terms: SnapshotTerm[] = new Array(termCount);
+  const terms = new Array<SnapshotTerm>(termCount);
   for (let i = 0; i < termCount; i++) {
     const start = off[i]!;
     const length = len[i]!;

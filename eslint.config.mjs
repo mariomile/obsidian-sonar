@@ -6,6 +6,8 @@ import tseslint from 'typescript-eslint';
 export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
+  // The Obsidian community-review ruleset (what the plugin review bot runs).
+  ...obsidianmd.configs.recommended,
   {
     files: ['src/**/*.ts'],
     languageOptions: {
@@ -17,9 +19,6 @@ export default tseslint.config(
         projectService: true,
         tsconfigRootDir: import.meta.dirname,
       },
-    },
-    plugins: {
-      obsidianmd,
     },
     rules: {
       '@typescript-eslint/consistent-type-imports': 'error',
