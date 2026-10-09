@@ -306,29 +306,28 @@ export class SonarModal extends Modal {
       startY = touch.clientY;
       dy = 0;
       dragging = true;
-      this.modalEl.style.animation = 'none';
-      this.modalEl.style.transition = 'none';
+      this.modalEl.setCssStyles({ animation: 'none', transition: 'none' });
     };
     const move = (e: TouchEvent): void => {
       const touch = e.touches[0];
       if (!dragging || !touch) return;
       dy = touch.clientY - startY;
       if (dy <= 0) {
-        this.modalEl.style.transform = ''; // dragged upward — not a dismiss
+        this.modalEl.setCssStyles({ transform: '' }); // dragged upward — not a dismiss
         return;
       }
       e.preventDefault();
-      this.modalEl.style.transform = `translateY(${dy}px)`;
+      this.modalEl.setCssStyles({ transform: `translateY(${dy}px)` });
     };
     const end = (): void => {
       if (!dragging) return;
       dragging = false;
-      this.modalEl.style.transition = settle;
+      this.modalEl.setCssStyles({ transition: settle });
       if (dy > 110) {
-        this.modalEl.style.transform = 'translateY(100%)';
+        this.modalEl.setCssStyles({ transform: 'translateY(100%)' });
         window.setTimeout(() => this.close(), 200);
       } else {
-        this.modalEl.style.transform = '';
+        this.modalEl.setCssStyles({ transform: '' });
       }
     };
 
@@ -796,7 +795,7 @@ export class SonarModal extends Modal {
       items: g.items.map((r) => ({
         path: r.path,
         basename: r.basename,
-        docType: 'md' as DocType,
+        docType: 'md',
         ext: r.ext,
         matched: [],
       })),
@@ -865,7 +864,7 @@ export class SonarModal extends Modal {
         });
       }
     }
-    const fragment = document.createDocumentFragment();
+    const fragment = createFragment();
     while (holder.firstChild) fragment.appendChild(holder.firstChild);
     this.listEl.empty();
     this.listEl.appendChild(fragment);

@@ -34,7 +34,7 @@ export function frecencyBoost(entry: FrecencyEntry | undefined, now: number): nu
  */
 export class FrecencyTracker {
   private readonly entries = new Map<string, FrecencyEntry>();
-  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private saveTimer: number | null = null;
 
   constructor(
     private readonly app: App,
@@ -104,8 +104,8 @@ export class FrecencyTracker {
   }
 
   private scheduleSave(): void {
-    if (this.saveTimer) clearTimeout(this.saveTimer);
-    this.saveTimer = setTimeout(() => {
+    if (this.saveTimer) window.clearTimeout(this.saveTimer);
+    this.saveTimer = window.setTimeout(() => {
       this.saveTimer = null;
       void this.save();
     }, SAVE_DEBOUNCE_MS);
@@ -125,7 +125,7 @@ export class FrecencyTracker {
 
   dispose(): void {
     if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
+      window.clearTimeout(this.saveTimer);
       this.saveTimer = null;
       void this.save();
     }

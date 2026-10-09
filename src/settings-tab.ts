@@ -1,4 +1,4 @@
-import { type App, Notice, PluginSettingTab, Setting } from 'obsidian';
+import { type App, Notice, Platform, PluginSettingTab, Setting } from 'obsidian';
 import type SonarPlugin from './main.ts';
 
 export class SonarSettingTab extends PluginSettingTab {
@@ -115,55 +115,59 @@ export class SonarSettingTab extends PluginSettingTab {
         }),
       );
 
-    new Setting(containerEl).setName('HTTP API').setHeading();
+    // The HTTP API needs Node's http/crypto modules, which only exist on
+    // desktop; hide the whole section on mobile so nothing can reach them.
+    if (Platform.isDesktopApp) {
+      new Setting(containerEl).setName('HTTP API').setHeading();
 
-    new Setting(containerEl)
-      .setName('Enable HTTP search API')
-      .setDesc('Authenticated GET /search endpoint on localhost (desktop only).')
-      .addToggle((t) =>
-        t.setValue(s.httpEnabled).onChange(async (v) => {
-          s.httpEnabled = v;
-          await this.plugin.saveSettings();
-          this.plugin.refreshHttp();
-          this.display();
-        }),
-      );
-
-    new Setting(containerEl)
-      .setName('HTTP access token')
-      .setDesc(
-        s.httpTokenHash
-          ? 'Configured. Regenerating invalidates the previous token; only its SHA-256 hash is stored.'
-          : 'Required before the API starts. The raw token is copied once and is never stored in the vault.',
-      )
-      .addButton((b) =>
-        b.setButtonText(s.httpTokenHash ? 'Regenerate and copy' : 'Generate and copy').onClick(async () => {
-          const token = await this.plugin.rotateHttpToken();
-          await navigator.clipboard.writeText(token);
-          new Notice('Sonar: access token copied. Store it in your local client now.');
-          this.display();
-        }),
-      );
-
-    new Setting(containerEl)
-      .setName('HTTP port')
-      .setDesc('Default 51361 (Omnisearch’s port, for drop-in compatibility).')
-      .addText((t) =>
-        t.setValue(String(s.httpPort)).onChange(async (v) => {
-          const n = Number(v);
-          if (Number.isInteger(n) && n > 0 && n < 65536) {
-            s.httpPort = n;
+      new Setting(containerEl)
+        .setName('Enable HTTP search API')
+        .setDesc('Authenticated GET /search endpoint on localhost (desktop only).')
+        .addToggle((t) =>
+          t.setValue(s.httpEnabled).onChange(async (v) => {
+            s.httpEnabled = v;
             await this.plugin.saveSettings();
             this.plugin.refreshHttp();
-          }
-        }),
-      );
+            this.display();
+          }),
+        );
 
-    const httpStatus = this.plugin.httpStatusText();
-    if (httpStatus) {
-      const statusEl = containerEl.createDiv({ cls: 'sonar-http-status', text: httpStatus.text });
-      statusEl.toggleClass('is-error', httpStatus.error);
-      statusEl.toggleClass('is-ok', !httpStatus.error);
+      new Setting(containerEl)
+        .setName('HTTP access token')
+        .setDesc(
+          s.httpTokenHash
+            ? 'Configured. Regenerating invalidates the previous token; only its SHA-256 hash is stored.'
+            : 'Required before the API starts. The raw token is copied once and is never stored in the vault.',
+        )
+        .addButton((b) =>
+          b.setButtonText(s.httpTokenHash ? 'Regenerate and copy' : 'Generate and copy').onClick(async () => {
+            const token = await this.plugin.rotateHttpToken();
+            await navigator.clipboard.writeText(token);
+            new Notice('Sonar: access token copied. Store it in your local client now.');
+            this.display();
+          }),
+        );
+
+      new Setting(containerEl)
+        .setName('HTTP port')
+        .setDesc('Default 51361 (Omnisearch’s port, for drop-in compatibility).')
+        .addText((t) =>
+          t.setValue(String(s.httpPort)).onChange(async (v) => {
+            const n = Number(v);
+            if (Number.isInteger(n) && n > 0 && n < 65536) {
+              s.httpPort = n;
+              await this.plugin.saveSettings();
+              this.plugin.refreshHttp();
+            }
+          }),
+        );
+
+      const httpStatus = this.plugin.httpStatusText();
+      if (httpStatus) {
+        const statusEl = containerEl.createDiv({ cls: 'sonar-http-status', text: httpStatus.text });
+        statusEl.toggleClass('is-error', httpStatus.error);
+        statusEl.toggleClass('is-ok', !httpStatus.error);
+      }
     }
 
     new Setting(containerEl).setName('Index').setHeading();
