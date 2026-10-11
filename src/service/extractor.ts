@@ -35,7 +35,7 @@ const SAVE_MAX_WAIT_MS = 3 * 60_000;
 export class Extractor {
   private readonly textCache = new Map<string, string>();
   private readonly skip = new Set<string>();
-  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private saveTimer: number | null = null;
   private saveFirstDirtyAt = 0;
 
   constructor(
@@ -176,13 +176,13 @@ export class Extractor {
     // Once the pending run has waited past the max, save now rather than
     // re-arming — a steady stream of extractions can't defer it forever.
     if (Date.now() - this.saveFirstDirtyAt >= SAVE_MAX_WAIT_MS) {
-      if (this.saveTimer) clearTimeout(this.saveTimer);
+      if (this.saveTimer) window.clearTimeout(this.saveTimer);
       this.saveTimer = null;
       void this.save();
       return;
     }
-    if (this.saveTimer) clearTimeout(this.saveTimer);
-    this.saveTimer = setTimeout(() => {
+    if (this.saveTimer) window.clearTimeout(this.saveTimer);
+    this.saveTimer = window.setTimeout(() => {
       this.saveTimer = null;
       void this.save();
     }, SAVE_DEBOUNCE_MS);
@@ -203,7 +203,7 @@ export class Extractor {
 
   dispose(): void {
     if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
+      window.clearTimeout(this.saveTimer);
       this.saveTimer = null;
       void this.save();
     }

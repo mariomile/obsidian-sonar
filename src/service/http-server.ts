@@ -24,9 +24,20 @@ export function isAllowedLoopbackHost(host: string | undefined, port: number): b
   return normalized === `127.0.0.1:${port}` || normalized === `localhost:${port}`;
 }
 
+/** Lazily load node:crypto so this module never touches Node APIs at import
+ *  time; every caller is reached only on desktop (Platform.isDesktopApp). */
 function cryptoModule(): CryptoModule {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy, desktop-only load; a static import would break plugin load on mobile
   return require('node:crypto') as CryptoModule;
+}
+
+/** Decode a hex string (like `Buffer.from(hex, 'hex')`: stops at the first
+ *  invalid pair) without relying on the Node-only `Buffer` global. */
+function hexToBytes(hex: string): Uint8Array {
+  const valid = /^(?:[0-9a-f]{2})*/i.exec(hex)?.[0] ?? '';
+  const bytes = new Uint8Array(valid.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(valid.slice(i * 2, i * 2 + 2), 16);
+  return bytes;
 }
 
 export function hashBearerToken(token: string): string {
@@ -41,8 +52,8 @@ export function createBearerToken(): { token: string; hash: string } {
 export function hasValidBearer(authorization: string | undefined, expectedHash: string): boolean {
   const match = /^Bearer\s+(.+)$/i.exec(authorization?.trim() ?? '');
   if (!match?.[1] || !expectedHash) return false;
-  const actual = Buffer.from(hashBearerToken(match[1]), 'hex');
-  const expected = Buffer.from(expectedHash, 'hex');
+  const actual = hexToBytes(hashBearerToken(match[1]));
+  const expected = hexToBytes(expectedHash);
   return actual.length === expected.length && cryptoModule().timingSafeEqual(actual, expected);
 }
 
@@ -86,7 +97,7 @@ export class HttpServer {
     if (this.server) return;
     // Lazy require so this module never loads node:http on mobile. (This class
     // is only instantiated behind Platform.isDesktopApp.)
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- lazy, desktop-only load; a static import would break plugin load on mobile
     const http = require('node:http') as HttpModule;
     const server = http.createServer((req, res) => void this.handle(req, res));
 
@@ -94,7 +105,7 @@ export class HttpServer {
       this.sockets.add(socket);
       socket.on('close', () => this.sockets.delete(socket));
     });
-    server.on('error', (err: NodeJS.ErrnoException) => {
+    server.on('error', (err: Error & { code?: string }) => {
       if (err.code === 'EADDRINUSE') {
         const message = `Port ${this.port} is already in use — Omnisearch's HTTP server is probably still enabled. Disable it or change Sonar's port.`;
         new Notice(`Sonar: ${message}`);

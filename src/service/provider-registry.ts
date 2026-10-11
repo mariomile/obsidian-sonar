@@ -94,16 +94,16 @@ export class ProviderRegistry {
 
     void runWave(instant);
 
-    let deepTimer: ReturnType<typeof setTimeout> | null = null;
+    let deepTimer: number | null = null;
     if (deep.length > 0) {
-      deepTimer = setTimeout(() => {
+      deepTimer = window.setTimeout(() => {
         if (!signal.aborted) void runWave(deep);
       }, opts.deepDelayMs ?? DEFAULT_DEEP_DELAY);
     }
 
     return () => {
       controller.abort();
-      if (deepTimer) clearTimeout(deepTimer);
+      if (deepTimer) window.clearTimeout(deepTimer);
     };
   }
 

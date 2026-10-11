@@ -205,6 +205,8 @@ export default class SonarPlugin extends Plugin {
 
   /** Rotate the API credential, persisting only its SHA-256 hash. */
   async rotateHttpToken(): Promise<string> {
+    // Token generation uses node:crypto, which is unavailable on mobile.
+    if (!Platform.isDesktopApp) throw new Error('The HTTP API is only available on desktop.');
     const { token, hash } = createBearerToken();
     this.settings.httpTokenHash = hash;
     await this.saveSettings();

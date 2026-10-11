@@ -71,15 +71,15 @@ const READ_CONCURRENCY = 12;
 /** Resolve `p`, or reject after `ms` — so one stuck read can't stall indexing. */
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    const timer = window.setTimeout(() => reject(new Error('timeout')), ms);
     p.then(
       (v) => {
-        clearTimeout(timer);
+        window.clearTimeout(timer);
         resolve(v);
       },
       (e) => {
-        clearTimeout(timer);
-        reject(e);
+        window.clearTimeout(timer);
+        reject(e instanceof Error ? e : new Error(String(e)));
       },
     );
   });
@@ -116,9 +116,9 @@ export class SearchService {
   private total = 0;
   private failedCount = 0;
 
-  private readonly debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly debounceTimers = new Map<string, number>();
   private readonly pending = new Map<string, 'change' | 'delete'>();
-  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private saveTimer: number | null = null;
   private cacheDirty = false;
   /** When the current unsaved run of mutations began — anchors SAVE_MAX_WAIT. */
   private saveFirstDirtyAt = 0;
@@ -228,10 +228,10 @@ export class SearchService {
 
   private debounce(path: string, fn: () => void): void {
     const existing = this.debounceTimers.get(path);
-    if (existing) clearTimeout(existing);
+    if (existing) window.clearTimeout(existing);
     this.debounceTimers.set(
       path,
-      setTimeout(() => {
+      window.setTimeout(() => {
         this.debounceTimers.delete(path);
         fn();
       }, DEBOUNCE_MS),
@@ -595,13 +595,13 @@ export class SearchService {
     // Bound worst-case staleness: once the current dirty run has waited past
     // SAVE_MAX_WAIT, stop deferring and save now instead of re-arming.
     if (this.saveFirstDirtyAt !== 0 && Date.now() - this.saveFirstDirtyAt >= SAVE_MAX_WAIT_MS) {
-      if (this.saveTimer) clearTimeout(this.saveTimer);
+      if (this.saveTimer) window.clearTimeout(this.saveTimer);
       this.saveTimer = null;
       void this.saveCache();
       return;
     }
-    if (this.saveTimer) clearTimeout(this.saveTimer);
-    this.saveTimer = setTimeout(() => {
+    if (this.saveTimer) window.clearTimeout(this.saveTimer);
+    this.saveTimer = window.setTimeout(() => {
       this.saveTimer = null;
       void this.saveCache();
     }, SAVE_DEBOUNCE_MS);
@@ -649,9 +649,9 @@ export class SearchService {
 
   dispose(): void {
     this.disposed = true;
-    for (const t of this.debounceTimers.values()) clearTimeout(t);
+    for (const t of this.debounceTimers.values()) window.clearTimeout(t);
     this.debounceTimers.clear();
-    if (this.saveTimer) clearTimeout(this.saveTimer);
+    if (this.saveTimer) window.clearTimeout(this.saveTimer);
     this.saveTimer = null;
     // Reloading an unchanged plugin must not serialize the full index again.
     if (this.cacheDirty) void this.saveCache();
