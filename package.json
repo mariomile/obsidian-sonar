@@ -1,6 +1,6 @@
 {
   "name": "sonar",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A fast, relevance-first search engine for Obsidian.",
   "main": "main.js",
   "type": "module",
