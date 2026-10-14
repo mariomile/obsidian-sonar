@@ -102,6 +102,11 @@ telemetry, or analytics to the plugin author or to a Sonar service. The optional
 HTTP API exposes search results only to local non-browser clients and remains
 off until explicitly enabled.
 
+On desktop the rebuildable caches (the binary index and extracted attachment
+text) live in the OS cache directory, outside the vault (`~/Library/Caches/sonar`
+on macOS, `%LOCALAPPDATA%\sonar` on Windows, `~/.cache/sonar` on Linux), so they
+never sync to other devices. Settings and open history stay in the plugin folder.
+
 ## Architecture
 
 The ranking engine (`src/index/`) is pure TypeScript with zero Obsidian imports, fully unit-tested headless:

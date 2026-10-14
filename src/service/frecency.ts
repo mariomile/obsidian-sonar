@@ -28,8 +28,9 @@ export function frecencyBoost(entry: FrecencyEntry | undefined, now: number): nu
 }
 
 /**
- * Tracks how often and how recently each file is opened, persists it beside the
- * index cache, and exposes a ranking boost. Interaction signal the pure index
+ * Tracks how often and how recently each file is opened, persists it in the
+ * plugin folder, and exposes a ranking boost. Unlike the index it is user
+ * history, not rebuildable, so it stays in the vault and syncs across devices. Interaction signal the pure index
  * can't carry (it only knows mtime).
  */
 export class FrecencyTracker {

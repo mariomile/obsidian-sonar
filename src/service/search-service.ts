@@ -12,6 +12,7 @@ import type { Extractor } from './extractor.ts';
 import type { FrecencyTracker } from './frecency.ts';
 import { type RecentSortBy, resolveSortTime } from './sort-time.ts';
 import { yieldToEventLoop } from './yield.ts';
+import { readCacheBinary, writeCacheFile } from './machine-cache.ts';
 
 export type { RecentSortBy };
 
@@ -52,8 +53,8 @@ const DEBOUNCE_MS = 400;
  *  cache is a *derived* artifact — in-memory search already reflects edits
  *  immediately, and a stale/missing cache only costs a partial re-index on the
  *  next launch. So we persist lazily: a 60s debounce (was 10s) cuts full-index
- *  writes ~6× during editing sessions, which matters a lot because the file is
- *  tens of MB and every write is re-uploaded by iCloud + Obsidian Sync. */
+ *  writes ~6× during editing sessions, which matters because the file is tens
+ *  of MB and each save re-serializes all of it. */
 const SAVE_DEBOUNCE_MS = 60_000;
 /** Upper bound on how long continuous edits may defer a save. Without this,
  *  each mutation re-arms the debounce and a steady editing streak could starve
@@ -108,8 +109,8 @@ export class SearchService {
    *  resident. On mobile we index title/headings/tags/frontmatter ONLY — all
    *  available from the metadata cache with no file reads — so the resident
    *  index is a few MB. Two hard invariants follow: (1) never load the desktop
-   *  cache (it's the heavy one), (2) NEVER persist on mobile, or a lite index
-   *  would clobber the desktop's rich index.bin through Sync. */
+   *  cache (it's the heavy one), (2) NEVER persist on mobile. Mobile also has
+   *  no machine cache dir (`cacheDir` is undefined there: no Node fs). */
   private readonly liteMode = Platform.isMobile;
   private ready = false;
   private indexed = 0;
@@ -135,6 +136,7 @@ export class SearchService {
   constructor(
     private readonly app: App,
     private readonly settings: SonarSettings,
+    /** Machine-local cache directory (desktop only), outside the vault. */
     private readonly cacheDir: string | undefined,
   ) {}
 
@@ -567,9 +569,8 @@ export class SearchService {
     const path = this.cachePath();
     if (!path) return;
     try {
-      const adapter = this.app.vault.adapter;
-      if (!(await adapter.exists(path))) return;
-      const buf = await adapter.readBinary(path);
+      const buf = await readCacheBinary(path);
+      if (!buf) return;
       const decoded = decodeIndex(buf);
       if (!decoded) return;
       if (decoded.schemaVersion !== SCHEMA_VERSION || decoded.tokenizerVersion !== TOKENIZER_VERSION) {
@@ -582,8 +583,7 @@ export class SearchService {
   }
 
   scheduleSave(): void {
-    // Never persist on mobile: the lite index would overwrite the desktop's
-    // full index.bin through Sync, degrading desktop search to title-only.
+    // Never persist on mobile: the lite index is rebuilt fresh every launch.
     if (this.liteMode) return;
     this.cacheDirty = true;
     if (this.saveFirstDirtyAt === 0) this.saveFirstDirtyAt = Date.now();
@@ -608,14 +608,14 @@ export class SearchService {
   }
 
   private saveCache(): Promise<void> {
-    if (this.liteMode) return Promise.resolve(); // mobile never writes the shared cache
+    if (this.liteMode) return Promise.resolve(); // mobile never writes a cache
     const path = this.cachePath();
     if (!path || !this.cacheDirty) return Promise.resolve();
     if (this.saveInFlight) return this.saveInFlight;
 
     const run = this.writeCache(path).finally(() => {
       this.saveInFlight = null;
-      // A mutation can land while adapter.writeBinary is awaiting I/O.
+      // A mutation can land while the write is awaiting I/O.
       if (this.cacheDirty) this.armSaveTimer();
     });
     this.saveInFlight = run;
@@ -632,7 +632,7 @@ export class SearchService {
       const threshold = Math.max(COMPACT_MIN, this.index.docCount * 0.2);
       if (this.index.tombstoneCount > threshold) this.index.compact();
       const buf = encodeIndex(this.index, SCHEMA_VERSION, TOKENIZER_VERSION);
-      await this.app.vault.adapter.writeBinary(path, buf);
+      await writeCacheFile(path, new Uint8Array(buf));
     } catch (e) {
       this.cacheDirty = true;
       console.warn('Sonar: failed to save index cache', e);
