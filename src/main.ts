@@ -51,7 +51,6 @@ export default class SonarPlugin extends Plugin {
       this.manifest.dir,
     );
     this.service.extractor = this.extractor;
-    void this.extractor.load();
 
     this.frecency = new FrecencyTracker(this.app, this.manifest.dir);
     this.service.frecency = this.frecency;
@@ -102,7 +101,12 @@ export default class SonarPlugin extends Plugin {
 
     // The file catalog powers the universal file finder over every file type.
     // It's rebuilt from getFiles() at layout-ready and kept fresh incrementally.
-    this.app.workspace.onLayoutReady(() => this.fileCatalog.build());
+    // The 5 MB attachment-text cache parses at layout-ready too, off the startup
+    // path: only excerpts read it, and nothing writes it before the build ends.
+    this.app.workspace.onLayoutReady(() => {
+      this.fileCatalog.build();
+      void this.extractor.load();
+    });
     this.registerEvent(
       this.app.vault.on('create', (f) => {
         if (f instanceof TFile) this.fileCatalog.add(f);
