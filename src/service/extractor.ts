@@ -3,6 +3,7 @@ import type { InvertedIndex } from '../index/inverted-index.ts';
 import { extractFields } from '../index/field-extract.ts';
 import type { DocType } from '../index/fields.ts';
 import type { SonarSettings } from '../settings.ts';
+import { readCacheText, writeCacheFile } from './machine-cache.ts';
 
 /** The slice of the Text Extractor plugin API that Sonar consumes. */
 interface TextExtractorApi {
@@ -20,7 +21,7 @@ const CONCURRENCY = 2;
  *  (multi-MB) is serialized on each save, so persist lazily — the cache is
  *  derived (re-extractable), so a longer debounce (30s) and a 3-min max-wait
  *  only risk re-extracting a few attachments after a crash, while cutting
- *  Sync re-uploads of the large JSON during extraction runs. */
+ *  rewrites of the large JSON during extraction runs. */
 const SAVE_DEBOUNCE_MS = 30_000;
 const SAVE_MAX_WAIT_MS = 3 * 60_000;
 
@@ -43,6 +44,7 @@ export class Extractor {
     private readonly settings: SonarSettings,
     private readonly index: InvertedIndex,
     private readonly onIndexed: () => void,
+    /** Machine-local cache directory (desktop only), outside the vault. */
     private readonly cacheDir: string | undefined,
   ) {}
 
@@ -160,9 +162,9 @@ export class Extractor {
     const path = this.path();
     if (!path) return;
     try {
-      const adapter = this.app.vault.adapter;
-      if (!(await adapter.exists(path))) return;
-      const raw = JSON.parse(await adapter.read(path)) as Record<string, string>;
+      const json = await readCacheText(path);
+      if (json === null) return;
+      const raw = JSON.parse(json) as Record<string, string>;
       for (const [p, text] of Object.entries(raw)) {
         if (typeof text === 'string') this.textCache.set(p, text);
       }
@@ -195,7 +197,7 @@ export class Extractor {
     try {
       const obj: Record<string, string> = {};
       for (const [p, text] of this.textCache) obj[p] = text;
-      await this.app.vault.adapter.write(path, JSON.stringify(obj));
+      await writeCacheFile(path, JSON.stringify(obj));
     } catch (e) {
       console.warn('Sonar: failed to save attachment cache', e);
     }

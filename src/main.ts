@@ -1,4 +1,4 @@
-import { addIcon, Platform, Plugin, TFile } from 'obsidian';
+import { addIcon, type FileSystemAdapter, Platform, Plugin, TFile } from 'obsidian';
 import { parseSettings, type SonarSettings } from './settings.ts';
 import { SearchService } from './service/search-service.ts';
 import { Extractor } from './service/extractor.ts';
@@ -7,6 +7,7 @@ import { KeywordProvider } from './service/keyword-provider.ts';
 import { FileCatalog } from './service/file-catalog.ts';
 import { FileFinderProvider } from './service/file-finder-provider.ts';
 import { FrecencyTracker } from './service/frecency.ts';
+import { desktopCacheDir } from './service/machine-cache.ts';
 import { createBearerToken, HttpServer } from './service/http-server.ts';
 import { SonarSettingTab } from './settings-tab.ts';
 import { SonarModal } from './ui/modal.ts';
@@ -42,13 +43,20 @@ export default class SonarPlugin extends Plugin {
   async onload(): Promise<void> {
     this.settings = parseSettings(await this.loadData());
 
-    this.service = new SearchService(this.app, this.settings, this.manifest.dir);
+    // Rebuildable caches live outside the vault so they never sync; mobile
+    // gets none (lite index, never persisted, no Node fs).
+    const cacheDir = Platform.isDesktopApp
+      ? desktopCacheDir((this.app.vault.adapter as FileSystemAdapter).getBasePath())
+      : undefined;
+    if (Platform.isDesktopApp) void this.removeInVaultCaches();
+
+    this.service = new SearchService(this.app, this.settings, cacheDir);
     this.extractor = new Extractor(
       this.app,
       this.settings,
       this.service.index,
       () => this.service.scheduleSave(),
-      this.manifest.dir,
+      cacheDir,
     );
     this.service.extractor = this.extractor;
 
@@ -125,6 +133,20 @@ export default class SonarPlugin extends Plugin {
     );
 
     this.refreshHttp();
+  }
+
+  /** Up to 0.2.2 the caches lived in the plugin folder and synced to every
+   *  device; delete those copies (deletions propagate through Sync). */
+  private async removeInVaultCaches(): Promise<void> {
+    const adapter = this.app.vault.adapter;
+    for (const name of ['index.bin', 'attachments.json']) {
+      const path = `${this.manifest.dir}/${name}`;
+      try {
+        if (await adapter.exists(path)) await adapter.remove(path);
+      } catch (e) {
+        console.warn('Sonar: failed to remove old in-vault cache', path, e);
+      }
+    }
   }
 
   onunload(): void {
