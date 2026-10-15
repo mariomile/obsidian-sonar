@@ -1,5 +1,5 @@
 import { BODY_FIELD, FIELD_COUNT } from './fields.ts';
-import { copyPostingRange, type InvertedIndex } from './inverted-index.ts';
+import { copyPostingRange, postingSegments, type InvertedIndex } from './inverted-index.ts';
 
 /**
  * All ranking constants in one place. Relative order is locked by tests; tune
@@ -148,46 +148,47 @@ export function rank(input: RankInput): ScoredDoc[] {
       const entry = index.getPostings(variant);
       if (!entry) continue;
       const termIdf = idf(n, entry.df);
-      const p = entry.postings;
-      let i = 0;
-      const len = p.length;
-      while (i < len) {
-        const docId = p[i++]!;
-        const fieldMask = p[i++]!;
+      for (const p of postingSegments(entry)) {
+        let i = 0;
+        const len = p.length;
+        while (i < len) {
+          const docId = p[i++]!;
+          const fieldMask = p[i++]!;
 
-        // Walk tf per set field, accumulating the BM25F normalized term freq.
-        let tnorm = 0;
-        const entryDoc = index.docEntry(docId);
-        for (let f = 0; f < FIELD_COUNT; f++) {
-          if (fieldMask & (1 << f)) {
-            const tf = p[i++]!;
-            // Always advance the cursor past every field's tf, but only score
-            // the fields allowed by restrictFields (title-only search).
-            if (entryDoc && (!restrictFields || restrictFields.has(f))) {
-              const b = RANK.fieldB[f]!;
-              const avg = avgLen[f]!;
-              const norm = avg > 0 ? entryDoc.fieldLengths[f]! / avg : 1;
-              const denom = 1 - b + b * norm;
-              tnorm += (RANK.fieldWeight[f]! * tf) / denom;
+          // Walk tf per set field, accumulating the BM25F normalized term freq.
+          let tnorm = 0;
+          const entryDoc = index.docEntry(docId);
+          for (let f = 0; f < FIELD_COUNT; f++) {
+            if (fieldMask & (1 << f)) {
+              const tf = p[i++]!;
+              // Always advance the cursor past every field's tf, but only score
+              // the fields allowed by restrictFields (title-only search).
+              if (entryDoc && (!restrictFields || restrictFields.has(f))) {
+                const b = RANK.fieldB[f]!;
+                const avg = avgLen[f]!;
+                const norm = avg > 0 ? entryDoc.fieldLengths[f]! / avg : 1;
+                const denom = 1 - b + b * norm;
+                tnorm += (RANK.fieldWeight[f]! * tf) / denom;
+              }
             }
           }
-        }
 
-        let positions: number[] = [];
-        if (fieldMask & BODY_BIT) {
-          const posCount = p[i++]!;
-          positions = copyPostingRange(p, i, i + posCount);
-          i += posCount;
-        }
+          let positions: number[] = [];
+          if (fieldMask & BODY_BIT) {
+            const posCount = p[i++]!;
+            positions = copyPostingRange(p, i, i + posCount);
+            i += posCount;
+          }
 
-        if (!entryDoc || entryDoc.deleted) continue;
-        if (allow && !allow(docId)) continue;
-        if (tnorm === 0) continue; // matched only in restricted-out fields
+          if (!entryDoc || entryDoc.deleted) continue;
+          if (allow && !allow(docId)) continue;
+          if (tnorm === 0) continue; // matched only in restricted-out fields
 
-        const contribution = (termIdf * tnorm) / (RANK.k1 + tnorm);
-        const cur = groupBest.get(docId);
-        if (!cur || contribution > cur.score) {
-          groupBest.set(docId, { score: contribution, term: variant, positions });
+          const contribution = (termIdf * tnorm) / (RANK.k1 + tnorm);
+          const cur = groupBest.get(docId);
+          if (!cur || contribution > cur.score) {
+            groupBest.set(docId, { score: contribution, term: variant, positions });
+          }
         }
       }
     }

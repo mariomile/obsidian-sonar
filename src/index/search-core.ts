@@ -4,7 +4,7 @@ import { hubFolder } from './field-extract.ts';
 import { fuzzyCandidates } from './fuzzy.ts';
 import { rank, RANK, type ScoredDoc, type TermGroup } from './bm25f.ts';
 import { FIELD } from './fields.ts';
-import type { InvertedIndex } from './inverted-index.ts';
+import { postingSegments, type InvertedIndex } from './inverted-index.ts';
 import type { DocType } from './fields.ts';
 
 /** Fields searched when "Title only" is on. */
@@ -220,17 +220,18 @@ function buildAllow(
   for (const term of exclusions) {
     const entry = index.getPostings(term);
     if (!entry) continue;
-    const p = entry.postings;
-    let i = 0;
-    while (i < p.length) {
-      const docId = p[i++]!;
-      const fieldMask = p[i++]!;
-      for (let f = 0; f < 7; f++) if (fieldMask & (1 << f)) i++;
-      if (fieldMask & (1 << 6)) {
-        const posCount = p[i++]!;
-        i += posCount;
+    for (const p of postingSegments(entry)) {
+      let i = 0;
+      while (i < p.length) {
+        const docId = p[i++]!;
+        const fieldMask = p[i++]!;
+        for (let f = 0; f < 7; f++) if (fieldMask & (1 << f)) i++;
+        if (fieldMask & (1 << 6)) {
+          const posCount = p[i++]!;
+          i += posCount;
+        }
+        if (!index.isDeleted(docId)) excluded.add(docId);
       }
-      if (!index.isDeleted(docId)) excluded.add(docId);
     }
   }
 
