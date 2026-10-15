@@ -31,7 +31,7 @@ export function encodeIndex(
   const termCount = snap.terms.length;
 
   let postingsWordCount = 0;
-  for (const term of snap.terms) postingsWordCount += term.postings.length;
+  for (const term of snap.terms) postingsWordCount += term.postings.length + (term.tail?.length ?? 0);
 
   const metaStart = 12;
   const termCountAt = align4(metaStart + metaBytes.byteLength);
@@ -66,9 +66,14 @@ export function encodeIndex(
     const term = snap.terms[i]!;
     df[i] = term.df;
     off[i] = cursor;
-    len[i] = term.postings.length;
     postings.set(term.postings, cursor);
     cursor += term.postings.length;
+    // Appended groups follow the cached view: same bytes as one merged list.
+    if (term.tail) {
+      postings.set(term.tail, cursor);
+      cursor += term.tail.length;
+    }
+    len[i] = cursor - off[i]!;
   }
   view.setUint32(postingsCountAt, postingsWordCount, true);
 

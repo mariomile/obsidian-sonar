@@ -47,7 +47,7 @@ describe('InvertedIndex — add & lookup', () => {
 
     const entry = idx.getPostings('note')!;
     expect(entry.df).toBe(1);
-    const [row] = decodePostings(entry.postings);
+    const [row] = decodePostings(entry);
     expect(row!.docId).toBe(0);
     // 'note' appears in BASENAME (tf 1) and BODY (tf 2)
     expect(row!.tf[FIELD.BASENAME]).toBe(1);
@@ -79,7 +79,7 @@ describe('InvertedIndex — postings round-trip', () => {
     const d = doc({ path: 'a.md' });
     withField(d, FIELD.BASENAME, ['title']); // no body → no positions
     idx.addDocument(d);
-    const [row] = decodePostings(idx.getPostings('title')!.postings);
+    const [row] = decodePostings(idx.getPostings('title')!);
     expect(row!.fieldMask & (1 << FIELD.BODY)).toBe(0);
     expect(row!.bodyPositions).toEqual([]);
     expect(row!.tf[FIELD.BASENAME]).toBe(1);
@@ -153,7 +153,7 @@ describe('InvertedIndex — compaction', () => {
     expect(idx.getPostings('apple')).toBeUndefined(); // term gone
     expect(idx.getPostings('dog')!.df).toBe(1);
     // postings now reference the new dense ids
-    const rows = decodePostings(idx.getPostings('cat')!.postings).map((r) => r.docId);
+    const rows = decodePostings(idx.getPostings('cat')!).map((r) => r.docId);
     expect(rows).toEqual([0, 1]);
   });
 });

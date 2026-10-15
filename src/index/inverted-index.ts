@@ -39,10 +39,21 @@ export interface TermEntry {
    *   if the BODY bit is set—posCount followed by posCount body positions.
    */
   postings: PostingList;
+  /**
+   * Groups appended after a cache-backed typed `postings` view, which is never
+   * copied or written. Readers walk `postings` then `tail` (see
+   * `postingSegments()`); a group never straddles the two.
+   */
+  tail?: number[];
 }
 
-/** Fresh terms use mutable arrays; cache-backed terms stay zero-copy until mutated. */
+/** Fresh terms use mutable arrays; cache-backed terms stay zero-copy views. */
 export type PostingList = number[] | Uint32Array;
+
+/** A term's posting words in order: `postings`, then its `tail` if any. */
+export function postingSegments(entry: { postings: PostingList; tail?: number[] }): PostingList[] {
+  return entry.tail ? [entry.postings, entry.tail] : [entry.postings];
+}
 
 export interface DecodedPosting {
   docId: number;
@@ -66,24 +77,26 @@ function popcount(mask: number): number {
 }
 
 /** Decode a term's flat postings into structured rows (used by tests + scoring). */
-export function decodePostings(postings: PostingList): DecodedPosting[] {
+export function decodePostings(entry: TermEntry): DecodedPosting[] {
   const rows: DecodedPosting[] = [];
-  let i = 0;
-  const n = postings.length;
-  while (i < n) {
-    const docId = postings[i++]!;
-    const fieldMask = postings[i++]!;
-    const tf = new Array<number>(FIELD_COUNT).fill(0);
-    for (let f = 0; f < FIELD_COUNT; f++) {
-      if (fieldMask & (1 << f)) tf[f] = postings[i++]!;
+  for (const postings of postingSegments(entry)) {
+    let i = 0;
+    const n = postings.length;
+    while (i < n) {
+      const docId = postings[i++]!;
+      const fieldMask = postings[i++]!;
+      const tf = new Array<number>(FIELD_COUNT).fill(0);
+      for (let f = 0; f < FIELD_COUNT; f++) {
+        if (fieldMask & (1 << f)) tf[f] = postings[i++]!;
+      }
+      let bodyPositions: number[] = [];
+      if (fieldMask & BODY_BIT) {
+        const posCount = postings[i++]!;
+        bodyPositions = copyPostingRange(postings, i, i + posCount);
+        i += posCount;
+      }
+      rows.push({ docId, fieldMask, tf, bodyPositions });
     }
-    let bodyPositions: number[] = [];
-    if (fieldMask & BODY_BIT) {
-      const posCount = postings[i++]!;
-      bodyPositions = copyPostingRange(postings, i, i + posCount);
-      i += posCount;
-    }
-    rows.push({ docId, fieldMask, tf, bodyPositions });
   }
   return rows;
 }
@@ -295,24 +308,25 @@ export class InvertedIndex {
     for (const [term, entry] of this.terms) {
       const rebuilt: number[] = [];
       let df = 0;
-      const src = entry.postings;
-      let i = 0;
-      const n = src.length;
-      while (i < n) {
-        const groupStart = i;
-        const docId = src[i++]!;
-        const fieldMask = src[i++]!;
-        i += popcount(fieldMask); // tf values
-        if (fieldMask & BODY_BIT) {
-          const posCount = src[i++]!;
-          i += posCount;
+      for (const src of postingSegments(entry)) {
+        let i = 0;
+        const n = src.length;
+        while (i < n) {
+          const groupStart = i;
+          const docId = src[i++]!;
+          const fieldMask = src[i++]!;
+          i += popcount(fieldMask); // tf values
+          if (fieldMask & BODY_BIT) {
+            const posCount = src[i++]!;
+            i += posCount;
+          }
+          const newId = oldToNew.get(docId);
+          if (newId === undefined) continue; // tombstoned
+          // Copy the group verbatim, only rewriting the docId.
+          rebuilt.push(newId);
+          for (let k = groupStart + 1; k < i; k++) rebuilt.push(src[k]!);
+          df++;
         }
-        const newId = oldToNew.get(docId);
-        if (newId === undefined) continue; // tombstoned
-        // Copy the group verbatim, only rewriting the docId.
-        rebuilt.push(newId);
-        for (let k = groupStart + 1; k < i; k++) rebuilt.push(src[k]!);
-        df++;
       }
       if (df > 0) newTerms.set(term, { df, postings: rebuilt });
     }
@@ -334,12 +348,14 @@ export class InvertedIndex {
     this.sortedTerms.splice(at, 0, term);
   }
 
-  /** Materialize a cache-backed typed view only when an incremental write needs it. */
+  /**
+   * Where an incremental write goes. A cache-backed typed view is never
+   * copied: its new groups go to the term's `tail`, so re-indexing a note
+   * costs the words it adds, not the size of the lists it touches.
+   */
   private mutablePostings(entry: TermEntry): number[] {
     if (Array.isArray(entry.postings)) return entry.postings;
-    const mutable = Array.from(entry.postings);
-    entry.postings = mutable;
-    return mutable;
+    return (entry.tail ??= []);
   }
 
   /**
@@ -353,7 +369,7 @@ export class InvertedIndex {
     // rebuild prefix-search state in O(terms), without sorting 100k+ strings.
     for (const term of this.sortedTerms) {
       const entry = this.terms.get(term)!;
-      terms.push({ term, df: entry.df, postings: entry.postings });
+      terms.push({ term, df: entry.df, postings: entry.postings, tail: entry.tail });
     }
     return { docs: this.docs, terms };
   }
@@ -382,7 +398,9 @@ export class InvertedIndex {
     let previous = '';
     for (let i = 0; i < snap.terms.length; i++) {
       const term = snap.terms[i]!;
-      this.terms.set(term.term, { df: term.df, postings: term.postings });
+      const entry: TermEntry = { df: term.df, postings: term.postings };
+      if (term.tail) entry.tail = term.tail;
+      this.terms.set(term.term, entry);
       this.sortedTerms[i] = term.term;
       if (i > 0 && term.term < previous) alreadySorted = false;
       previous = term.term;
@@ -395,6 +413,7 @@ export interface SnapshotTerm {
   term: string;
   df: number;
   postings: PostingList;
+  tail?: number[];
 }
 
 export interface IndexSnapshot {

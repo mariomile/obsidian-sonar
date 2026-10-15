@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { InvertedIndex, type DocInput } from './inverted-index.ts';
+import { InvertedIndex, decodePostings, type DocInput } from './inverted-index.ts';
 import { extractFields } from './field-extract.ts';
 import { encodeIndex, decodeIndex, SCHEMA_VERSION } from './serialize.ts';
 import { search } from './search-core.ts';
@@ -19,6 +19,12 @@ function buildIndex(): InvertedIndex {
   index.addDocument(docFrom('dog.md', 'a dog and a cat play together'));
   index.addDocument(docFrom('bird.md', 'birds fly over the cat and dog'));
   return index;
+}
+
+function restore(index: InvertedIndex): InvertedIndex {
+  const restored = new InvertedIndex();
+  restored.loadSnapshot(decodeIndex(encodeIndex(index, SCHEMA_VERSION, TOKENIZER_VERSION))!.snapshot);
+  return restored;
 }
 
 describe('serialize — round trip', () => {
@@ -48,15 +54,54 @@ describe('serialize — round trip', () => {
     expect(Array.from(restored.getPostings('cat')!.postings)).toEqual(index.getPostings('cat')!.postings);
   });
 
-  it('keeps decoded postings as zero-copy typed views until they are mutated', () => {
+  it('keeps decoded postings as zero-copy typed views, even after appends', () => {
     const index = buildIndex();
     const decoded = decodeIndex(encodeIndex(index, SCHEMA_VERSION, TOKENIZER_VERSION))!;
     expect(decoded.snapshot.terms[0]!.postings).toBeInstanceOf(Uint32Array);
 
     const restored = new InvertedIndex();
     restored.loadSnapshot(decoded.snapshot);
-    restored.addDocument(docFrom('more-cats.md', 'cat'));
-    expect(restored.getPostings('cat')!.df).toBe(4);
+    const view = restored.getPostings('cat')!.postings;
+    restored.addDocument(docFrom('fresh.md', 'cat'));
+    const entry = restored.getPostings('cat')!;
+    expect(entry.postings).toBe(view);
+    expect(entry.df).toBe(4);
+    expect(decodePostings(entry).map((r) => r.docId)).toEqual([0, 1, 2, 3]);
+    expect(search(restored, 'cat', { now: NOW }).map((r) => r.path)).toContain('fresh.md');
+
+    const copy = new InvertedIndex();
+    copy.loadSnapshot(restored.snapshot());
+    expect(decodePostings(copy.getPostings('cat')!)).toEqual(decodePostings(entry));
+  });
+
+  it('encodes appended postings byte-identically to an index built in memory', () => {
+    const index = buildIndex();
+    const restored = restore(index);
+    for (const target of [index, restored]) {
+      target.tombstone('dog.md');
+      target.addDocument(docFrom('dog.md', 'a dog chased the cat'));
+    }
+    expect(new Uint8Array(encodeIndex(restored, SCHEMA_VERSION, TOKENIZER_VERSION))).toEqual(
+      new Uint8Array(encodeIndex(index, SCHEMA_VERSION, TOKENIZER_VERSION)),
+    );
+  });
+
+  it('excludes and compacts across a cached view and its appended postings', () => {
+    const restored = restore(buildIndex());
+    restored.addDocument(docFrom('more-cats.md', 'cat and dog nap'));
+    // 'dog' now matches dog.md + bird.md (cached view) and more-cats.md (appended).
+    expect(search(restored, 'cat -dog', { now: NOW }).map((r) => r.path)).toEqual(['cat.md']);
+
+    // Re-index: the first appended group becomes a tombstone inside the tail.
+    restored.tombstone('more-cats.md');
+    restored.addDocument(docFrom('more-cats.md', 'cat and dog nap'));
+    restored.tombstone('cat.md');
+    restored.compact();
+    const entry = restored.getPostings('cat')!;
+    expect(entry.df).toBe(3);
+    expect(entry.tail).toBeUndefined();
+    expect(decodePostings(entry).map((r) => r.docId)).toEqual([0, 1, 2]);
+    expect(restored.getIdByPath('more-cats.md')).toBe(2);
   });
 
   it('preserves tombstones across the round trip', () => {
